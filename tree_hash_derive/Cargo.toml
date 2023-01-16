@@ -1,0 +1,19 @@
+[package]
+name = "tree_hash_derive"
+version = "1.0.0-beta.0"
+edition = "2021"
+description = "Procedural derive macros to accompany the tree_hash crate"
+license = "Apache-2.0"
+readme = "../README.md"
+repository = "https://github.com/sigp/tree_hash"
+documentation = "https://docs.rs/tree_hash_derive"
+keywords = ["ethereum"]
+categories = ["cryptography::cryptocurrencies"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "1.0.42"
+quote = "1.0.7"
+darling = "0.13.0"
