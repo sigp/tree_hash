@@ -1,5 +1,5 @@
-use crate::{get_zero_hash, Hash256, HASHSIZE};
-use ethereum_hashing::{Context, Sha256Context, HASH_LEN};
+use crate::{get_zero_hash, Hash256, HASHSIZE, HASH_LEN};
+use sha2::{Sha256 as Context, Digest};
 use smallvec::{smallvec, SmallVec};
 use std::mem;
 
@@ -51,7 +51,7 @@ impl HalfNode {
     /// nodes.
     fn finish(mut self, right: Preimage) -> [u8; HASH_LEN] {
         self.context.update(right.as_bytes());
-        self.context.finalize()
+        self.context.finalize().into()
     }
 }
 

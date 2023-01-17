@@ -12,6 +12,7 @@ use smallvec::SmallVec;
 
 pub const BYTES_PER_CHUNK: usize = 32;
 pub const HASHSIZE: usize = 32;
+pub const HASH_LEN: usize = 32;
 pub const MERKLE_HASH_CHUNK: usize = 2 * BYTES_PER_CHUNK;
 pub const MAX_UNION_SELECTOR: u8 = 127;
 pub const SMALLVEC_SIZE: usize = 32;
