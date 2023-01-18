@@ -1,5 +1,4 @@
 use super::*;
-use ethereum_hashing::hash;
 
 /// Merkleizes bytes and returns the root, using a simple algorithm that does not optimize to avoid
 /// processing or storing padding bytes.

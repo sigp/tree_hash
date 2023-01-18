@@ -1,5 +1,5 @@
 use ssz_derive::Encode;
-use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
+use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK, hash32_concat};
 use tree_hash_derive::TreeHash;
 
 #[derive(Encode)]
@@ -44,7 +44,7 @@ fn mix_in_selector(a: Hash256, selector: u8) -> Hash256 {
     let mut b = [0; 32];
     b[0] = selector;
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(a.as_bytes(), &b))
+    Hash256::from_slice(&hash32_concat(a.as_bytes(), &b))
 }
 
 fn u8_hash_concat(v1: u8, v2: u8) -> Hash256 {
@@ -54,7 +54,7 @@ fn u8_hash_concat(v1: u8, v2: u8) -> Hash256 {
     a[0] = v1;
     b[0] = v2;
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(&a, &b))
+    Hash256::from_slice(&hash32_concat(&a, &b))
 }
 
 fn u8_hash(x: u8) -> Hash256 {

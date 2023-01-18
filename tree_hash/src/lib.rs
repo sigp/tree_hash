@@ -7,7 +7,8 @@ pub use merkle_hasher::{Error, MerkleHasher};
 pub use merkleize_padded::merkleize_padded;
 pub use merkleize_standard::merkleize_standard;
 
-use ethereum_hashing::{hash_fixed, ZERO_HASHES, ZERO_HASHES_MAX_INDEX};
+use lazy_static::lazy_static;
+use sha2::{Sha256, Digest};
 use smallvec::SmallVec;
 
 pub const BYTES_PER_CHUNK: usize = 32;
@@ -42,7 +43,6 @@ pub fn merkle_root(bytes: &[u8], minimum_leaf_count: usize) -> Hash256 {
         // overhead with `MerkleHasher` and just do a simple 3-node tree here.
         let mut leaves = [0; HASHSIZE * 2];
         leaves[0..bytes.len()].copy_from_slice(bytes);
-
         Hash256::from_slice(&hash_fixed(&leaves))
     } else {
         // If there are 3 or more leaves, use `MerkleHasher`.
@@ -65,7 +65,7 @@ pub fn mix_in_length(root: &Hash256, length: usize) -> Hash256 {
     let mut length_bytes = [0; BYTES_PER_CHUNK];
     length_bytes[0..usize_len].copy_from_slice(&length.to_le_bytes());
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(root.as_bytes(), &length_bytes)[..])
+    Hash256::from_slice(&hash32_concat(root.as_bytes(), &length_bytes)[..])
 }
 
 /// Returns `Some(root)` created by hashing `root` and `selector`, if `selector <=
@@ -89,8 +89,40 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
     let mut chunk = [0; BYTES_PER_CHUNK];
     chunk[0] = selector;
 
-    let root = ethereum_hashing::hash32_concat(root.as_bytes(), &chunk);
+    let root = hash32_concat(root.as_bytes(), &chunk);
     Some(Hash256::from_slice(&root))
+}
+
+/// The max index that can be used with `ZERO_HASHES`.
+pub const ZERO_HASHES_MAX_INDEX: usize = 48;
+
+/// Compute the hash of two slices concatenated.
+pub fn hash32_concat(h1: &[u8], h2: &[u8]) -> [u8; 32] {
+    let mut ctxt = Sha256::new();
+    ctxt.update(h1);
+    ctxt.update(h2);
+    ctxt.finalize().into()
+}
+
+fn hash(input: &[u8]) -> Vec<u8> {
+    Sha256::digest(input).into_iter().collect()
+}
+
+fn hash_fixed(input: &[u8]) -> [u8; HASH_LEN] {
+    Sha256::digest(input).into()
+}
+
+lazy_static! {
+    /// Cached zero hashes where `ZERO_HASHES[i]` is the hash of a Merkle tree with 2^i zero leaves.
+    pub static ref ZERO_HASHES: Vec<Vec<u8>> = {
+        let mut hashes = vec![vec![0; 32]; ZERO_HASHES_MAX_INDEX + 1];
+
+        for i in 0..ZERO_HASHES_MAX_INDEX {
+            hashes[i + 1] = hash32_concat(&hashes[i], &hashes[i])[..].to_vec();
+        }
+
+        hashes
+    };
 }
 
 /// Returns a cached padding node for a given height.
@@ -198,7 +230,7 @@ mod test {
             let mut preimage = vec![42; BYTES_PER_CHUNK];
             preimage.append(&mut vec![42]);
             preimage.append(&mut vec![0; BYTES_PER_CHUNK - 1]);
-            ethereum_hashing::hash(&preimage)
+            hash(&preimage)
         };
 
         assert_eq!(

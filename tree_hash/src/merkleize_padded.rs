@@ -1,5 +1,4 @@
-use super::{get_zero_hash, Hash256, BYTES_PER_CHUNK};
-use ethereum_hashing::{hash32_concat, hash_fixed};
+use super::{hash32_concat, hash_fixed, get_zero_hash, Hash256, BYTES_PER_CHUNK};
 
 /// Merkleize `bytes` and return the root, optionally padding the tree out to `min_leaves` number of
 /// leaves.

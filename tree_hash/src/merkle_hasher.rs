@@ -264,11 +264,13 @@ impl MerkleHasher {
     /// Returns an error if the bytes remaining in the buffer would create a leaf that would exceed
     /// the maximum permissible number of leaves defined by the initialization `depth`.
     pub fn finish(mut self) -> Result<Hash256, Error> {
+        println!("FINISH");
         if !self.buffer.is_empty() {
             let mut leaf = [0; HASHSIZE];
             leaf[..self.buffer.len()].copy_from_slice(&self.buffer);
             self.process_leaf(&leaf)?
         }
+        println!("FINISH 273");
 
         // If the tree is incomplete, we must complete it by providing zero-hashes.
         loop {
@@ -276,7 +278,9 @@ impl MerkleHasher {
                 break Ok(root);
             } else if let Some(node) = self.half_nodes.last() {
                 let right_child = node.id * 2 + 1;
+                println!("FINISH 281");
                 self.process_right_node(right_child, self.zero_hash(right_child));
+                println!("FINISH 283");
             } else if self.next_leaf == 1 {
                 // The next_leaf can only be 1 if the tree has a depth of one. If have been no
                 // leaves supplied, assume a root of zero.
@@ -320,6 +324,7 @@ impl MerkleHasher {
     ///       4  5 6  7 <-- supplied right node
     /// ```
     fn process_right_node(&mut self, id: usize, mut preimage: Preimage) {
+        println!("process_right_node 327");
         let mut parent = get_parent(id);
 
         loop {
