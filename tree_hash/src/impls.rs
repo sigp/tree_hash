@@ -221,6 +221,13 @@ mod test {
     }
 
     #[test]
+    fn arc() {
+        let one = U128::from(1);
+        let one_arc = Arc::new(one);
+        assert_eq!(one_arc.tree_hash_root(), one.tree_hash_root());
+    }
+
+    #[test]
     fn int_to_bytes() {
         assert_eq!(int_to_hash256(0).as_bytes(), &[0; 32]);
         assert_eq!(
