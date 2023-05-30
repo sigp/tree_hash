@@ -1,5 +1,6 @@
 use super::*;
 use ethereum_types::{H160, H256, U128, U256};
+use std::sync::Arc;
 
 fn int_to_hash256(int: u64) -> Hash256 {
     let mut bytes = [0; HASHSIZE];
@@ -186,6 +187,24 @@ impl TreeHash for H256 {
     }
 }
 
+impl<T: TreeHash> TreeHash for Arc<T> {
+    fn tree_hash_type() -> TreeHashType {
+        T::tree_hash_type()
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        self.as_ref().tree_hash_packed_encoding()
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        T::tree_hash_packing_factor()
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        self.as_ref().tree_hash_root()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -199,6 +218,13 @@ mod test {
 
         assert_eq!(true.tree_hash_root().as_bytes(), true_bytes.as_slice());
         assert_eq!(false.tree_hash_root().as_bytes(), false_bytes.as_slice());
+    }
+
+    #[test]
+    fn arc() {
+        let one = U128::from(1);
+        let one_arc = Arc::new(one);
+        assert_eq!(one_arc.tree_hash_root(), one.tree_hash_root());
     }
 
     #[test]
