@@ -205,6 +205,31 @@ impl<T: TreeHash> TreeHash for Arc<T> {
     }
 }
 
+impl<T> TreeHash for Option<T>
+where
+    T: TreeHash,
+{
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::Container
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        unreachable!("Option should never be packed")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        unreachable!("Option should never be packed")
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        let (selector, root) = match self {
+            None => (0, Hash256::zero()),
+            Some(t) => (1, t.tree_hash_root()),
+        };
+        mix_in_selector(&root, selector).expect("an option cannot overflow the selector")
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -225,6 +250,18 @@ mod test {
         let one = U128::from(1);
         let one_arc = Arc::new(one);
         assert_eq!(one_arc.tree_hash_root(), one.tree_hash_root());
+    }
+
+    #[test]
+    fn option() {
+        assert_eq!(
+            None::<u64>.tree_hash_root(),
+            mix_in_selector(&Hash256::zero(), 0).unwrap()
+        );
+        assert_eq!(
+            Some(42_u64).tree_hash_root(),
+            mix_in_selector(&42_u64.tree_hash_root(), 1).unwrap()
+        );
     }
 
     #[test]
