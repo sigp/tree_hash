@@ -1,6 +1,6 @@
 [package]
 name = "tree_hash"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 description = "Efficient Merkle-hashing as used in Ethereum consensus"
 license = "Apache-2.0"
@@ -17,7 +17,7 @@ smallvec = "1.6.1"
 
 [dev-dependencies]
 rand = "0.8.5"
-tree_hash_derive = { path = "../tree_hash_derive", version = "0.5.2" }
+tree_hash_derive = { path = "../tree_hash_derive", version = "0.6.0" }
 ethereum_ssz = "0.5"
 ethereum_ssz_derive = "0.5"
 
