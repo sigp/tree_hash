@@ -44,7 +44,7 @@ fn mix_in_selector(a: Hash256, selector: u8) -> Hash256 {
     let mut b = [0; 32];
     b[0] = selector;
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(a.as_bytes(), &b))
+    Hash256::from_slice(&ethereum_hashing::hash32_concat(a.as_slice(), &b))
 }
 
 fn u8_hash_concat(v1: u8, v2: u8) -> Hash256 {
