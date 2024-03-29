@@ -162,7 +162,7 @@ fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> Toke
                 let mut hasher = tree_hash::MerkleHasher::with_leaves(#num_leaves);
 
                 #(
-                    hasher.write(self.#idents.tree_hash_root().as_bytes())
+                    hasher.write(self.#idents.tree_hash_root().as_slice())
                         .expect("tree hash derive should not apply too many leaves");
                 )*
 
