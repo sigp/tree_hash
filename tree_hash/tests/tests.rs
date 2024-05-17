@@ -1,5 +1,5 @@
 use ssz_derive::Encode;
-use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
+use tree_hash::{self, Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
 
 #[derive(Encode)]

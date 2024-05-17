@@ -92,6 +92,13 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
     Some(Hash256::from_slice(&root))
 }
 
+pub fn mix_in_aux(root: &Hash256, aux: &Hash256) -> Hash256 {
+    Hash256::from_slice(&ethereum_hashing::hash32_concat(
+        root.as_bytes(),
+        aux.as_bytes(),
+    ))
+}
+
 /// Returns a cached padding node for a given height.
 fn get_zero_hash(height: usize) -> &'static [u8] {
     if height <= ZERO_HASHES_MAX_INDEX {
@@ -107,6 +114,7 @@ pub enum TreeHashType {
     Vector,
     List,
     Container,
+    StableContainer,
 }
 
 pub trait TreeHash {

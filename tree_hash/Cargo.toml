@@ -17,9 +17,12 @@ smallvec = "1.6.1"
 
 [dev-dependencies]
 rand = "0.8.5"
-tree_hash_derive = { path = "../tree_hash_derive", version = "0.5.2" }
-ethereum_ssz = "1.0.0-beta.2"
-ethereum_ssz_derive = "1.0.0-beta.2"
+tree_hash_derive = { path = "../tree_hash_derive" }
+#tree_hash_derive = { git = "https://github.com/macladson/tree_hash", branch = "stable-container" }
+ethereum_ssz = { git = "https://github.com/macladson/ethereum_ssz", branch = "stable-container" }
+ethereum_ssz_derive = { git = "https://github.com/macladson/ethereum_ssz", branch = "stable-container" }
+ssz_types = { git = "https://github.com/macladson/ssz_types", branch = "stable-container" }
+typenum = "1.12.0"
 
 [features]
 arbitrary = ["ethereum-types/arbitrary"]

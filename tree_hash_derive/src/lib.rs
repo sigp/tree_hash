@@ -3,7 +3,7 @@ use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::quote;
 use std::convert::TryInto;
-use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Meta};
+use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Expr, Meta};
 
 /// The highest possible union selector value (higher values are reserved for backwards compatible
 /// extensions).
@@ -13,14 +13,42 @@ const MAX_UNION_SELECTOR: u8 = 127;
 #[darling(attributes(tree_hash))]
 struct StructOpts {
     #[darling(default)]
+    struct_behaviour: Option<String>,
+    #[darling(default)]
     enum_behaviour: Option<String>,
+    #[darling(default)]
+    max_fields: Option<String>,
 }
+
+const STRUCT_CONTAINER: &str = "container";
+const STRUCT_STABLE_CONTAINER: &str = "stable_container";
+const STRUCT_VARIANTS: &[&str] = &[STRUCT_CONTAINER, STRUCT_STABLE_CONTAINER];
+const NO_STRUCT_BEHAVIOUR_ERROR: &str = "structs require a \"struct_behaviour\" attribute, \
+    e.g., #[tree_hash(struct_behaviour = \"container\")]";
 
 const ENUM_TRANSPARENT: &str = "transparent";
 const ENUM_UNION: &str = "union";
 const ENUM_VARIANTS: &[&str] = &[ENUM_TRANSPARENT, ENUM_UNION];
 const NO_ENUM_BEHAVIOUR_ERROR: &str = "enums require an \"enum_behaviour\" attribute, \
     e.g., #[tree_hash(enum_behaviour = \"transparent\")]";
+
+enum StructBehaviour {
+    Container,
+    StableContainer,
+}
+
+impl StructBehaviour {
+    pub fn new(s: Option<String>) -> Option<Self> {
+        s.map(|s| match s.as_ref() {
+            STRUCT_CONTAINER => StructBehaviour::Container,
+            STRUCT_STABLE_CONTAINER => StructBehaviour::StableContainer,
+            other => panic!(
+                "{} is an invalid struct_behaviour, use either {:?}",
+                other, STRUCT_VARIANTS
+            ),
+        })
+    }
+}
 
 enum EnumBehaviour {
     Transparent,
@@ -121,23 +149,43 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as DeriveInput);
     let opts = StructOpts::from_derive_input(&item).unwrap();
     let enum_opt = EnumBehaviour::new(opts.enum_behaviour);
+    let struct_opt = StructBehaviour::new(opts.struct_behaviour);
 
     match &item.data {
         syn::Data::Struct(s) => {
             if enum_opt.is_some() {
-                panic!("enum_behaviour is invalid for structs");
+                panic!("cannot use \"enum_behaviour\" for a struct");
             }
-            tree_hash_derive_struct(&item, s)
+            match struct_opt.expect(NO_STRUCT_BEHAVIOUR_ERROR) {
+                StructBehaviour::Container => tree_hash_derive_struct_container(&item, s),
+                StructBehaviour::StableContainer => {
+                    if let Some(max_fields_string) = opts.max_fields {
+                        let max_fields_ref = max_fields_string.as_ref();
+                        let max_fields_ty: Expr = syn::parse_str(max_fields_ref)
+                            .expect("\"max_fields\" is not a valid type.");
+                        let max_fields: proc_macro2::TokenStream = quote! { #max_fields_ty };
+
+                        tree_hash_derive_struct_stable_container(&item, s, max_fields)
+                    } else {
+                        panic!("stable_container requires \"max_fields\"")
+                    }
+                }
+            }
         }
-        syn::Data::Enum(s) => match enum_opt.expect(NO_ENUM_BEHAVIOUR_ERROR) {
-            EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
-            EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
-        },
+        syn::Data::Enum(s) => {
+            if struct_opt.is_some() {
+                panic!("cannot use \"struct_behaviour\" for an enum");
+            }
+            match enum_opt.expect(NO_ENUM_BEHAVIOUR_ERROR) {
+                EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
+                EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
+            }
+        }
         _ => panic!("tree_hash_derive only supports structs and enums."),
     }
 }
 
-fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> TokenStream {
+fn tree_hash_derive_struct_container(item: &DeriveInput, struct_data: &DataStruct) -> TokenStream {
     let name = &item.ident;
     let (impl_generics, ty_generics, where_clause) = &item.generics.split_for_impl();
 
@@ -167,6 +215,62 @@ fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> Toke
                 )*
 
                 hasher.finish().expect("tree hash derive should not have a remaining buffer")
+            }
+        }
+    };
+    output.into()
+}
+
+fn tree_hash_derive_struct_stable_container(
+    item: &DeriveInput,
+    struct_data: &DataStruct,
+    max_fields: proc_macro2::TokenStream,
+) -> TokenStream {
+    let name = &item.ident;
+    let (impl_generics, ty_generics, where_clause) = &item.generics.split_for_impl();
+
+    let idents = get_hashable_fields(struct_data);
+
+    let output = quote! {
+        impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
+            fn tree_hash_type() -> tree_hash::TreeHashType {
+                tree_hash::TreeHashType::StableContainer
+            }
+
+            fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
+                unreachable!("Struct should never be packed.")
+            }
+
+            fn tree_hash_packing_factor() -> usize {
+                unreachable!("Struct should never be packed.")
+            }
+
+            fn tree_hash_root(&self) -> tree_hash::Hash256 {
+                // Construct BitVector
+                let mut active_fields = BitVector::<#max_fields>::new();
+
+                let mut working_field: usize = 0;
+
+                #(
+                    if self.#idents.is_some() {
+                        active_fields.set(working_field, true).expect("Should not be out of bounds");
+                    }
+                    working_field += 1;
+                )*
+
+                // Hash according to `max_fields` regardless of the actual number of fields on the struct.
+                let mut hasher = tree_hash::MerkleHasher::with_leaves(#max_fields::to_usize());
+
+                #(
+                    if self.#idents.is_some() {
+                        hasher.write(self.#idents.tree_hash_root().as_bytes())
+                            .expect("tree hash derive should not apply too many leaves");
+                    }
+                )*
+
+                let hash = hasher.finish().expect("tree hash derive should not have a remaining buffer");
+
+                tree_hash::mix_in_aux(&hash, &active_fields.tree_hash_root())
             }
         }
     };
