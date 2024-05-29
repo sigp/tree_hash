@@ -1,6 +1,8 @@
 use ssz_derive::Encode;
+use ssz_types::BitVector;
 use tree_hash::{self, Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
+use typenum::Unsigned;
 
 #[derive(Encode)]
 struct HashVec {
@@ -125,4 +127,33 @@ fn variable_union() {
         VariableUnion::B(HashVec::from(vec![2])).tree_hash_root(),
         mix_in_selector(u8_hash_concat(2, 1), 1)
     );
+}
+
+//#[derive(TreeHash)]
+//#[tree_hash(struct_behaviour = "stable_container")]
+//#[tree_hash(max_fields = "typenum::U8")]
+//struct Shape {
+//    side: Option<u16>,
+//    color: Option<u8>,
+//    radius: Option<u16>,
+//}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "profile")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Square {
+    #[tree_hash(stable_index = 0)]
+    side: u16,
+    #[tree_hash(stable_index = 1)]
+    color: u8,
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "profile")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Circle {
+    #[tree_hash(stable_index = 0)]
+    side: u16,
+    #[tree_hash(stable_index = 1)]
+    color: u8,
 }
