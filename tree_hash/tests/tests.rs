@@ -166,10 +166,7 @@ fn shape_1() {
         radius: None,
     };
 
-    let square = Square {
-        side: 16,
-        color: 2,
-    };
+    let square = Square { side: 16, color: 2 };
 
     assert_eq!(shape_2.tree_hash_root(), square.tree_hash_root());
 }
@@ -186,7 +183,6 @@ fn shape_2() {
         color: 1,
         radius: 42,
     };
-    
+
     assert_eq!(shape_2.tree_hash_root(), circle.tree_hash_root());
 }
-
