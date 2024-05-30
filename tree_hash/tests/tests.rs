@@ -129,14 +129,14 @@ fn variable_union() {
     );
 }
 
-//#[derive(TreeHash)]
-//#[tree_hash(struct_behaviour = "stable_container")]
-//#[tree_hash(max_fields = "typenum::U8")]
-//struct Shape {
-//    side: Option<u16>,
-//    color: Option<u8>,
-//    radius: Option<u16>,
-//}
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "stable_container")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Shape {
+    side: Option<u16>,
+    color: Option<u8>,
+    radius: Option<u16>,
+}
 
 #[derive(TreeHash)]
 #[tree_hash(struct_behaviour = "profile")]

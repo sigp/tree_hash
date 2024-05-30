@@ -55,7 +55,7 @@ impl StructBehaviour {
             STRUCT_STABLE_CONTAINER => StructBehaviour::StableContainer,
             STRUCT_PROFILE => StructBehaviour::Profile,
             other => panic!(
-                "{} is an invalid struct_behaviour, use either {:?}",
+                "{} is an invalid struct_behaviour, use one of: {:?}",
                 other, STRUCT_VARIANTS
             ),
         })
