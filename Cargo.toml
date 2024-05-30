@@ -4,3 +4,7 @@ members = [
     "tree_hash_derive",
 ]
 resolver = "2"
+
+[patch."https://github.com/macladson/tree_hash"]
+tree_hash = { path = "./tree_hash" }
+tree_hash_derive = { path = "./tree_hash_derive" }

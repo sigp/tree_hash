@@ -168,7 +168,7 @@ fn shape_1() {
 
     let square = Square { side: 16, color: 2 };
 
-    assert_eq!(shape_2.tree_hash_root(), square.tree_hash_root());
+    assert_eq!(shape_1.tree_hash_root(), square.tree_hash_root());
 }
 
 #[test]
