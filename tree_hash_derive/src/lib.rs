@@ -33,8 +33,6 @@ const STRUCT_CONTAINER: &str = "container";
 const STRUCT_STABLE_CONTAINER: &str = "stable_container";
 const STRUCT_PROFILE: &str = "profile";
 const STRUCT_VARIANTS: &[&str] = &[STRUCT_CONTAINER, STRUCT_STABLE_CONTAINER, STRUCT_PROFILE];
-const NO_STRUCT_BEHAVIOUR_ERROR: &str = "structs require a \"struct_behaviour\" attribute, \
-    e.g., #[tree_hash(struct_behaviour = \"container\")]";
 
 const ENUM_TRANSPARENT: &str = "transparent";
 const ENUM_UNION: &str = "union";
@@ -205,9 +203,9 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
             if enum_opt.is_some() {
                 panic!("cannot use \"enum_behaviour\" for a struct");
             }
-            match struct_opt.expect(NO_STRUCT_BEHAVIOUR_ERROR) {
-                StructBehaviour::Container => tree_hash_derive_struct_container(&item, s),
-                StructBehaviour::StableContainer => {
+            match struct_opt {
+                Some(StructBehaviour::Container) => tree_hash_derive_struct_container(&item, s),
+                Some(StructBehaviour::StableContainer) => {
                     if let Some(max_fields_string) = opts.max_fields {
                         let max_fields_ref = max_fields_string.as_ref();
                         let max_fields_ty: Expr = syn::parse_str(max_fields_ref)
@@ -219,7 +217,7 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
                         panic!("stable_container requires \"max_fields\"")
                     }
                 }
-                StructBehaviour::Profile => {
+                Some(StructBehaviour::Profile) => {
                     if let Some(max_fields_string) = opts.max_fields {
                         let max_fields_ref = max_fields_string.as_ref();
                         let max_fields_ty: Expr = syn::parse_str(max_fields_ref)
@@ -231,6 +229,8 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
                         panic!("profile requires \"max_fields\"")
                     }
                 }
+                // Default to container.
+                None => tree_hash_derive_struct_container(&item, s),
             }
         }
         syn::Data::Enum(s) => {
