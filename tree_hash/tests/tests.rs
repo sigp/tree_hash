@@ -1,6 +1,8 @@
 use ssz_derive::Encode;
-use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
+use ssz_types::BitVector;
+use tree_hash::{self, Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
+use typenum::Unsigned;
 
 #[derive(Encode)]
 struct HashVec {
@@ -125,4 +127,85 @@ fn variable_union() {
         VariableUnion::B(HashVec::from(vec![2])).tree_hash_root(),
         mix_in_selector(u8_hash_concat(2, 1), 1)
     );
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "stable_container")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Shape {
+    side: Option<u16>,
+    color: Option<u8>,
+    radius: Option<u16>,
+}
+
+#[derive(TreeHash, Clone)]
+#[tree_hash(struct_behaviour = "profile")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Square {
+    #[tree_hash(stable_index = 0)]
+    side: u16,
+    #[tree_hash(stable_index = 1)]
+    color: u8,
+}
+
+#[derive(TreeHash, Clone)]
+#[tree_hash(struct_behaviour = "profile")]
+#[tree_hash(max_fields = "typenum::U8")]
+struct Circle {
+    #[tree_hash(stable_index = 1)]
+    color: u8,
+    #[tree_hash(stable_index = 2)]
+    radius: u16,
+}
+
+#[derive(TreeHash)]
+#[tree_hash(enum_behaviour = "transparent_stable")]
+enum ShapeEnum {
+    SquareVariant(Square),
+    CircleVariant(Circle),
+}
+
+#[test]
+fn shape_1() {
+    let shape_1 = Shape {
+        side: Some(16),
+        color: Some(2),
+        radius: None,
+    };
+
+    let square = Square { side: 16, color: 2 };
+
+    assert_eq!(shape_1.tree_hash_root(), square.tree_hash_root());
+}
+
+#[test]
+fn shape_2() {
+    let shape_2 = Shape {
+        side: None,
+        color: Some(1),
+        radius: Some(42),
+    };
+
+    let circle = Circle {
+        color: 1,
+        radius: 42,
+    };
+
+    assert_eq!(shape_2.tree_hash_root(), circle.tree_hash_root());
+}
+
+#[test]
+fn shape_enum() {
+    let square = Square { side: 16, color: 2 };
+
+    let circle = Circle {
+        color: 1,
+        radius: 14,
+    };
+
+    let enum_square = ShapeEnum::SquareVariant(square.clone());
+    let enum_circle = ShapeEnum::CircleVariant(circle.clone());
+
+    assert_eq!(square.tree_hash_root(), enum_square.tree_hash_root());
+    assert_eq!(circle.tree_hash_root(), enum_circle.tree_hash_root());
 }
