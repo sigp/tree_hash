@@ -138,7 +138,7 @@ struct Shape {
     radius: Option<u16>,
 }
 
-#[derive(TreeHash)]
+#[derive(TreeHash, Clone)]
 #[tree_hash(struct_behaviour = "profile")]
 #[tree_hash(max_fields = "typenum::U8")]
 struct Square {
@@ -148,7 +148,7 @@ struct Square {
     color: u8,
 }
 
-#[derive(TreeHash)]
+#[derive(TreeHash, Clone)]
 #[tree_hash(struct_behaviour = "profile")]
 #[tree_hash(max_fields = "typenum::U8")]
 struct Circle {
@@ -156,6 +156,13 @@ struct Circle {
     color: u8,
     #[tree_hash(stable_index = 2)]
     radius: u16,
+}
+
+#[derive(TreeHash)]
+#[tree_hash(enum_behaviour = "transparent_stable")]
+enum ShapeEnum {
+    SquareVariant(Square),
+    CircleVariant(Circle),
 }
 
 #[test]
@@ -185,4 +192,20 @@ fn shape_2() {
     };
 
     assert_eq!(shape_2.tree_hash_root(), circle.tree_hash_root());
+}
+
+#[test]
+fn shape_enum() {
+    let square = Square { side: 16, color: 2 };
+
+    let circle = Circle {
+        color: 1,
+        radius: 14,
+    };
+
+    let enum_square = ShapeEnum::SquareVariant(square.clone());
+    let enum_circle = ShapeEnum::CircleVariant(circle.clone());
+
+    assert_eq!(square.tree_hash_root(), enum_square.tree_hash_root());
+    assert_eq!(circle.tree_hash_root(), enum_circle.tree_hash_root());
 }

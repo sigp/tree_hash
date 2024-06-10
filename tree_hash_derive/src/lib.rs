@@ -35,6 +35,7 @@ const STRUCT_PROFILE: &str = "profile";
 const STRUCT_VARIANTS: &[&str] = &[STRUCT_CONTAINER, STRUCT_STABLE_CONTAINER, STRUCT_PROFILE];
 
 const ENUM_TRANSPARENT: &str = "transparent";
+const ENUM_TRANSPARENT_STABLE: &str = "transparent_stable";
 const ENUM_UNION: &str = "union";
 const ENUM_VARIANTS: &[&str] = &[ENUM_TRANSPARENT, ENUM_UNION];
 const NO_ENUM_BEHAVIOUR_ERROR: &str = "enums require an \"enum_behaviour\" attribute, \
@@ -62,6 +63,7 @@ impl StructBehaviour {
 
 enum EnumBehaviour {
     Transparent,
+    TransparentStable,
     Union,
 }
 
@@ -69,6 +71,7 @@ impl EnumBehaviour {
     pub fn new(s: Option<String>) -> Option<Self> {
         s.map(|s| match s.as_ref() {
             ENUM_TRANSPARENT => EnumBehaviour::Transparent,
+            ENUM_TRANSPARENT_STABLE => EnumBehaviour::TransparentStable,
             ENUM_UNION => EnumBehaviour::Union,
             other => panic!(
                 "{} is an invalid enum_behaviour, use either {:?}",
@@ -238,7 +241,16 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
                 panic!("cannot use \"struct_behaviour\" for an enum");
             }
             match enum_opt.expect(NO_ENUM_BEHAVIOUR_ERROR) {
-                EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
+                EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(
+                    &item,
+                    s,
+                    syn::parse_str("Container").unwrap(),
+                ),
+                EnumBehaviour::TransparentStable => tree_hash_derive_enum_transparent(
+                    &item,
+                    s,
+                    syn::parse_str("StableContainer").unwrap(),
+                ),
                 EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
             }
         }
@@ -454,6 +466,7 @@ fn tree_hash_derive_struct_profile(
 fn tree_hash_derive_enum_transparent(
     derive_input: &DeriveInput,
     enum_data: &DataEnum,
+    inner_container_type: Expr,
 ) -> TokenStream {
     let name = &derive_input.ident;
     let (impl_generics, ty_generics, where_clause) = &derive_input.generics.split_for_impl();
@@ -486,11 +499,11 @@ fn tree_hash_derive_enum_transparent(
                 #(
                     assert_eq!(
                         #type_exprs,
-                        tree_hash::TreeHashType::Container,
+                        tree_hash::TreeHashType::#inner_container_type,
                         "all variants must be of container type"
                     );
                 )*
-                tree_hash::TreeHashType::Container
+                tree_hash::TreeHashType::#inner_container_type
             }
 
             fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
