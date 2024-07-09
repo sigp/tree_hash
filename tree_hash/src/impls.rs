@@ -1,5 +1,6 @@
+use alloy_primitives::{Address, B256, U128, U256};
+
 use super::*;
-use ethereum_types::{H160, H256, U128, U256};
 use std::sync::Arc;
 
 fn int_to_hash256(int: u64) -> Hash256 {
@@ -109,9 +110,7 @@ impl TreeHash for U128 {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        let mut result = [0; 16];
-        self.to_little_endian(&mut result);
-        PackedEncoding::from_slice(&result)
+        PackedEncoding::from_slice(self.as_le_slice())
     }
 
     fn tree_hash_packing_factor() -> usize {
@@ -119,9 +118,7 @@ impl TreeHash for U128 {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        let mut result = [0; HASHSIZE];
-        self.to_little_endian(&mut result[0..16]);
-        Hash256::from_slice(&result)
+        Hash256::right_padding_from(self.as_le_slice())
     }
 }
 
@@ -131,8 +128,26 @@ impl TreeHash for U256 {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        PackedEncoding::from_slice(self.as_le_slice())
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        1
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        Hash256::from_slice(self.as_le_slice())
+    }
+}
+
+impl TreeHash for Address {
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::Vector
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
         let mut result = [0; 32];
-        self.to_little_endian(&mut result);
+        result[0..20].copy_from_slice(self.as_slice());
         PackedEncoding::from_slice(&result)
     }
 
@@ -142,40 +157,18 @@ impl TreeHash for U256 {
 
     fn tree_hash_root(&self) -> Hash256 {
         let mut result = [0; 32];
-        self.to_little_endian(&mut result[..]);
+        result[0..20].copy_from_slice(self.as_slice());
         Hash256::from_slice(&result)
     }
 }
 
-impl TreeHash for H160 {
+impl TreeHash for B256 {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        let mut result = [0; 32];
-        result[0..20].copy_from_slice(self.as_bytes());
-        PackedEncoding::from_slice(&result)
-    }
-
-    fn tree_hash_packing_factor() -> usize {
-        1
-    }
-
-    fn tree_hash_root(&self) -> Hash256 {
-        let mut result = [0; 32];
-        result[0..20].copy_from_slice(self.as_bytes());
-        Hash256::from_slice(&result)
-    }
-}
-
-impl TreeHash for H256 {
-    fn tree_hash_type() -> TreeHashType {
-        TreeHashType::Vector
-    }
-
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(self.as_bytes())
+        PackedEncoding::from_slice(self.as_slice())
     }
 
     fn tree_hash_packing_factor() -> usize {
@@ -216,8 +209,8 @@ mod test {
 
         let false_bytes: Vec<u8> = vec![0; 32];
 
-        assert_eq!(true.tree_hash_root().as_bytes(), true_bytes.as_slice());
-        assert_eq!(false.tree_hash_root().as_bytes(), false_bytes.as_slice());
+        assert_eq!(true.tree_hash_root().as_slice(), true_bytes.as_slice());
+        assert_eq!(false.tree_hash_root().as_slice(), false_bytes.as_slice());
     }
 
     #[test]
@@ -229,16 +222,16 @@ mod test {
 
     #[test]
     fn int_to_bytes() {
-        assert_eq!(int_to_hash256(0).as_bytes(), &[0; 32]);
+        assert_eq!(int_to_hash256(0).as_slice(), &[0; 32]);
         assert_eq!(
-            int_to_hash256(1).as_bytes(),
+            int_to_hash256(1).as_slice(),
             &[
                 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0
             ]
         );
         assert_eq!(
-            int_to_hash256(u64::max_value()).as_bytes(),
+            int_to_hash256(u64::max_value()).as_slice(),
             &[
                 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0

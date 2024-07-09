@@ -280,7 +280,7 @@ mod test {
                 let input = vec![0; 10 * BYTES_PER_CHUNK];
                 let min_nodes = 2usize.pow(ZERO_HASHES_MAX_INDEX as u32);
                 assert_eq!(
-                    merkleize_padded(&input, min_nodes).as_bytes(),
+                    merkleize_padded(&input, min_nodes).as_slice(),
                     get_zero_hash(ZERO_HASHES_MAX_INDEX)
                 );
             }

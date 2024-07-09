@@ -16,7 +16,7 @@ pub const MERKLE_HASH_CHUNK: usize = 2 * BYTES_PER_CHUNK;
 pub const MAX_UNION_SELECTOR: u8 = 127;
 pub const SMALLVEC_SIZE: usize = 32;
 
-pub type Hash256 = ethereum_types::H256;
+pub type Hash256 = alloy_primitives::B256;
 pub type PackedEncoding = SmallVec<[u8; SMALLVEC_SIZE]>;
 
 /// Convenience method for `MerkleHasher` which also provides some fast-paths for small trees.
@@ -30,7 +30,7 @@ pub fn merkle_root(bytes: &[u8], minimum_leaf_count: usize) -> Hash256 {
 
     if leaves == 0 {
         // If there are no bytes then the hash is always zero.
-        Hash256::zero()
+        Hash256::ZERO
     } else if leaves == 1 {
         // If there is only one leaf, the hash is always those leaf bytes padded out to 32-bytes.
         let mut hash = [0; HASHSIZE];
@@ -64,7 +64,7 @@ pub fn mix_in_length(root: &Hash256, length: usize) -> Hash256 {
     let mut length_bytes = [0; BYTES_PER_CHUNK];
     length_bytes[0..usize_len].copy_from_slice(&length.to_le_bytes());
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(root.as_bytes(), &length_bytes)[..])
+    Hash256::from_slice(&ethereum_hashing::hash32_concat(root.as_slice(), &length_bytes)[..])
 }
 
 /// Returns `Some(root)` created by hashing `root` and `selector`, if `selector <=
@@ -88,7 +88,7 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
     let mut chunk = [0; BYTES_PER_CHUNK];
     chunk[0] = selector;
 
-    let root = ethereum_hashing::hash32_concat(root.as_bytes(), &chunk);
+    let root = ethereum_hashing::hash32_concat(root.as_slice(), &chunk);
     Some(Hash256::from_slice(&root))
 }
 
@@ -201,7 +201,7 @@ mod test {
         };
 
         assert_eq!(
-            mix_in_length(&Hash256::from_slice(&[42; BYTES_PER_CHUNK]), 42).as_bytes(),
+            mix_in_length(&Hash256::from_slice(&[42; BYTES_PER_CHUNK]), 42).as_slice(),
             &hash[..]
         );
     }
