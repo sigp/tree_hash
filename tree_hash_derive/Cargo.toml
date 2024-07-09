@@ -1,6 +1,6 @@
 [package]
 name = "tree_hash_derive"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 description = "Procedural derive macros to accompany the tree_hash crate"
 license = "Apache-2.0"
@@ -14,6 +14,7 @@ categories = ["cryptography::cryptocurrencies"]
 proc-macro = true
 
 [dependencies]
-syn = "1.0.42"
-quote = "1.0.7"
-darling = "0.13.0"
+syn = "2.0.69"
+proc-macro2 = "1.0.23"
+quote = "1.0.18"
+darling = "0.20.9"

@@ -1,6 +1,6 @@
 [package]
 name = "tree_hash"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 description = "Efficient Merkle-hashing as used in Ethereum consensus"
 license = "Apache-2.0"
@@ -12,14 +12,14 @@ categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 ethereum-types = "0.14.1"
-ethereum_hashing = "1.0.0-beta.2"
+ethereum_hashing = "0.6.0"
 smallvec = "1.6.1"
 
 [dev-dependencies]
 rand = "0.8.5"
-tree_hash_derive = { path = "../tree_hash_derive", version = "0.5.2" }
-ethereum_ssz = "1.0.0-beta.2"
-ethereum_ssz_derive = "1.0.0-beta.2"
+tree_hash_derive = { path = "../tree_hash_derive", version = "0.6.0" }
+ethereum_ssz = "0.5"
+ethereum_ssz_derive = "0.5"
 
 [features]
 arbitrary = ["ethereum-types/arbitrary"]
