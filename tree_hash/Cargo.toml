@@ -13,13 +13,14 @@ categories = ["cryptography::cryptocurrencies"]
 [dependencies]
 alloy-primitives = "0.8.0"
 ethereum_hashing = "0.7.0"
+ethereum_ssz = { git = "https://github.com/macladson/ethereum_ssz", branch = "bitvector"  }
 smallvec = "1.6.1"
+typenum = "1.12.0"
 
 [dev-dependencies]
 rand = "0.8.5"
 tree_hash_derive = { path = "../tree_hash_derive", version = "0.8.0" }
-ethereum_ssz = "0.7"
-ethereum_ssz_derive = "0.7"
+ethereum_ssz_derive = { git = "https://github.com/macladson/ethereum_ssz", branch = "bitvector" }
 
 [features]
 arbitrary = ["alloy-primitives/arbitrary"]
