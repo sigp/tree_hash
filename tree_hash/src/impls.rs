@@ -1,6 +1,5 @@
-use alloy_primitives::{Address, B256, U128, U256};
-
 use super::*;
+use alloy_primitives::{Address, B256, U128, U256};
 use std::sync::Arc;
 
 fn int_to_hash256(int: u64) -> Hash256 {
@@ -110,7 +109,7 @@ impl TreeHash for U128 {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(self.as_le_slice())
+        PackedEncoding::from_slice(&self.to_le_bytes::<{ Self::BYTES }>())
     }
 
     fn tree_hash_packing_factor() -> usize {
@@ -118,7 +117,7 @@ impl TreeHash for U128 {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        Hash256::right_padding_from(self.as_le_slice())
+        Hash256::right_padding_from(&self.to_le_bytes::<{ Self::BYTES }>())
     }
 }
 
@@ -128,7 +127,7 @@ impl TreeHash for U256 {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(self.as_le_slice())
+        PackedEncoding::from(self.to_le_bytes::<{ Self::BYTES }>())
     }
 
     fn tree_hash_packing_factor() -> usize {
@@ -136,7 +135,7 @@ impl TreeHash for U256 {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        Hash256::from_slice(self.as_le_slice())
+        Hash256::from(self.to_le_bytes::<{ Self::BYTES }>())
     }
 }
 
