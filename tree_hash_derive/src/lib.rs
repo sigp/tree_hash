@@ -3,7 +3,7 @@ use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::quote;
 use std::convert::TryInto;
-use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Meta};
+use syn::{parse_macro_input, DataEnum, DataStruct, DeriveInput, Ident};
 
 /// The highest possible union selector value (higher values are reserved for backwards compatible
 /// extensions).
@@ -48,14 +48,14 @@ impl EnumBehaviour {
 fn get_hashable_fields(struct_data: &syn::DataStruct) -> Vec<&syn::Ident> {
     get_hashable_fields_and_their_caches(struct_data)
         .into_iter()
-        .map(|(ident, _, _)| ident)
+        .map(|(ident, _)| ident)
         .collect()
 }
 
 /// Return a Vec of the hashable fields of a struct, and each field's type and optional cache field.
 fn get_hashable_fields_and_their_caches(
     struct_data: &syn::DataStruct,
-) -> Vec<(&syn::Ident, syn::Type, Option<syn::Ident>)> {
+) -> Vec<(&syn::Ident, syn::Type)> {
     struct_data
         .fields
         .iter()
@@ -67,39 +67,9 @@ fn get_hashable_fields_and_their_caches(
                     .ident
                     .as_ref()
                     .expect("tree_hash_derive only supports named struct fields");
-                let opt_cache_field = get_cache_field_for(f);
-                Some((ident, f.ty.clone(), opt_cache_field))
+                Some((ident, f.ty.clone()))
             }
         })
-        .collect()
-}
-
-/// Parse the cached_tree_hash attribute for a field.
-///
-/// Extract the cache field name from `#[cached_tree_hash(cache_field_name)]`
-///
-/// Return `Some(cache_field_name)` if the field has a cached tree hash attribute,
-/// or `None` otherwise.
-fn get_cache_field_for(field: &syn::Field) -> Option<syn::Ident> {
-    use syn::{MetaList, NestedMeta};
-
-    let parsed_attrs = cached_tree_hash_attr_metas(&field.attrs);
-    if let [Meta::List(MetaList { nested, .. })] = &parsed_attrs[..] {
-        nested.iter().find_map(|x| match x {
-            NestedMeta::Meta(Meta::Path(path)) => path.get_ident().cloned(),
-            _ => None,
-        })
-    } else {
-        None
-    }
-}
-
-/// Process the `cached_tree_hash` attributes from a list of attributes into structured `Meta`s.
-fn cached_tree_hash_attr_metas(attrs: &[Attribute]) -> Vec<Meta> {
-    attrs
-        .iter()
-        .filter(|attr| attr.path.is_ident("cached_tree_hash"))
-        .flat_map(|attr| attr.parse_meta())
         .collect()
 }
 
@@ -108,8 +78,8 @@ fn cached_tree_hash_attr_metas(attrs: &[Attribute]) -> Vec<Meta> {
 /// The field attribute is: `#[tree_hash(skip_hashing)]`
 fn should_skip_hashing(field: &syn::Field) -> bool {
     field.attrs.iter().any(|attr| {
-        attr.path.is_ident("tree_hash")
-            && attr.tokens.to_string().replace(' ', "") == "(skip_hashing)"
+        attr.path().is_ident("tree_hash")
+            && attr.parse_args::<Ident>().unwrap().to_string() == "skip_hashing"
     })
 }
 
