@@ -126,3 +126,22 @@ fn variable_union() {
         mix_in_selector(u8_hash_concat(2, 1), 1)
     );
 }
+
+/// Test that the packed encodings for different types are equal.
+#[test]
+fn packed_encoding_example() {
+    let canonical = 0xfff0eee0ddd0ccc0_u64.tree_hash_packed_encoding();
+    let encodings = [
+        (0xccc0_u16.tree_hash_packed_encoding(), 0),
+        (0xddd0_u16.tree_hash_packed_encoding(), 2),
+        (0xeee0_u16.tree_hash_packed_encoding(), 4),
+        (0xfff0_u16.tree_hash_packed_encoding(), 6),
+    ];
+    for (i, (encoding, offset)) in encodings.into_iter().enumerate() {
+        assert_eq!(
+            &encoding[..],
+            &canonical[offset..offset + encoding.len()],
+            "encoding {i} is wrong"
+        );
+    }
+}
