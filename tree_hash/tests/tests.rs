@@ -1,4 +1,4 @@
-use alloy_primitives::{U128, U256};
+use alloy_primitives::{Address, U128, U160, U256};
 use ssz_derive::Encode;
 use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
@@ -151,8 +151,20 @@ fn packed_encoding_example() {
         (
             Hash256::from_slice(U256::from(val).as_le_slice())
                 .tree_hash_root()
-                .to_vec()
+                .0
                 .into(),
+            0,
+        ),
+        (U256::from(val).tree_hash_root().0.into(), 0),
+        (
+            Address::from(U160::from(val).to_le_bytes::<20>())
+                .tree_hash_root()
+                .0
+                .into(),
+            0,
+        ),
+        (
+            Address::from(U160::from(val).to_le_bytes::<20>()).tree_hash_packed_encoding(),
             0,
         ),
     ];
