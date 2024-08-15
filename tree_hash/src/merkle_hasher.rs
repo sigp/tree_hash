@@ -280,7 +280,7 @@ impl MerkleHasher {
             } else if self.next_leaf == 1 {
                 // The next_leaf can only be 1 if the tree has a depth of one. If have been no
                 // leaves supplied, assume a root of zero.
-                break Ok(Hash256::zero());
+                break Ok(Hash256::ZERO);
             } else {
                 // The only scenario where there are (a) no half nodes and (b) a tree of depth
                 // two or more is where no leaves have been supplied at all.
@@ -359,6 +359,8 @@ impl MerkleHasher {
 
 #[cfg(test)]
 mod test {
+    use alloy_primitives::U256;
+
     use super::*;
     use crate::merkleize_padded;
 
@@ -376,7 +378,7 @@ mod test {
     fn compare_with_reference(leaves: &[Hash256], depth: usize) {
         let reference_bytes = leaves
             .iter()
-            .flat_map(|hash| hash.as_bytes())
+            .flat_map(|hash| hash.as_slice())
             .copied()
             .collect::<Vec<_>>();
 
@@ -385,7 +387,7 @@ mod test {
         let merklizer_root_32_bytes = {
             let mut m = MerkleHasher::with_depth(depth);
             for leaf in leaves.iter() {
-                m.write(leaf.as_bytes()).expect("should process leaf");
+                m.write(leaf.as_slice()).expect("should process leaf");
             }
             m.finish().expect("should finish")
         };
@@ -426,7 +428,7 @@ mod test {
     /// of leaves and a depth.
     fn compare_reference_with_len(leaves: u64, depth: usize) {
         let leaves = (0..leaves)
-            .map(Hash256::from_low_u64_be)
+            .map(|leaf| Hash256::from(U256::from(leaf)))
             .collect::<Vec<_>>();
         compare_with_reference(&leaves, depth)
     }
@@ -435,13 +437,13 @@ mod test {
     /// results.
     fn compare_new_with_leaf_count(num_leaves: u64, depth: usize) {
         let leaves = (0..num_leaves)
-            .map(Hash256::from_low_u64_be)
+            .map(|leaf| Hash256::from(U256::from(leaf)))
             .collect::<Vec<_>>();
 
         let from_depth = {
             let mut m = MerkleHasher::with_depth(depth);
             for leaf in leaves.iter() {
-                m.write(leaf.as_bytes()).expect("should process leaf");
+                m.write(leaf.as_slice()).expect("should process leaf");
             }
             m.finish()
         };
@@ -449,7 +451,7 @@ mod test {
         let from_num_leaves = {
             let mut m = MerkleHasher::with_leaves(num_leaves as usize);
             for leaf in leaves.iter() {
-                m.process_leaf(leaf.as_bytes())
+                m.process_leaf(leaf.as_slice())
                     .expect("should process leaf");
             }
             m.finish()
@@ -495,7 +497,7 @@ mod test {
     #[test]
     fn with_0_leaves() {
         let hasher = MerkleHasher::with_leaves(0);
-        assert_eq!(hasher.finish().unwrap(), Hash256::zero());
+        assert_eq!(hasher.finish().unwrap(), Hash256::ZERO);
     }
 
     #[test]

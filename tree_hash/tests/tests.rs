@@ -1,3 +1,4 @@
+use alloy_primitives::{Address, U128, U160, U256};
 use ssz_derive::Encode;
 use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
@@ -44,7 +45,7 @@ fn mix_in_selector(a: Hash256, selector: u8) -> Hash256 {
     let mut b = [0; 32];
     b[0] = selector;
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(a.as_bytes(), &b))
+    Hash256::from_slice(&ethereum_hashing::hash32_concat(a.as_slice(), &b))
 }
 
 fn u8_hash_concat(v1: u8, v2: u8) -> Hash256 {
@@ -125,4 +126,53 @@ fn variable_union() {
         VariableUnion::B(HashVec::from(vec![2])).tree_hash_root(),
         mix_in_selector(u8_hash_concat(2, 1), 1)
     );
+}
+
+/// Test that the packed encodings for different types are equal.
+#[test]
+fn packed_encoding_example() {
+    let val = 0xfff0eee0ddd0ccc0bbb0aaa099908880_u128;
+    let canonical = U256::from(val).tree_hash_packed_encoding();
+    let encodings = [
+        (0x8880_u16.tree_hash_packed_encoding(), 0),
+        (0x9990_u16.tree_hash_packed_encoding(), 2),
+        (0xaaa0_u16.tree_hash_packed_encoding(), 4),
+        (0xbbb0_u16.tree_hash_packed_encoding(), 6),
+        (0xccc0_u16.tree_hash_packed_encoding(), 8),
+        (0xddd0_u16.tree_hash_packed_encoding(), 10),
+        (0xeee0_u16.tree_hash_packed_encoding(), 12),
+        (0xfff0_u16.tree_hash_packed_encoding(), 14),
+        (U128::from(val).tree_hash_packed_encoding(), 0),
+        (U128::from(0).tree_hash_packed_encoding(), 16),
+        (
+            Hash256::from_slice(U256::from(val).as_le_slice()).tree_hash_packed_encoding(),
+            0,
+        ),
+        (
+            Hash256::from_slice(U256::from(val).as_le_slice())
+                .tree_hash_root()
+                .0
+                .into(),
+            0,
+        ),
+        (U256::from(val).tree_hash_root().0.into(), 0),
+        (
+            Address::from(U160::from(val).to_le_bytes::<20>())
+                .tree_hash_root()
+                .0
+                .into(),
+            0,
+        ),
+        (
+            Address::from(U160::from(val).to_le_bytes::<20>()).tree_hash_packed_encoding(),
+            0,
+        ),
+    ];
+    for (i, (encoding, offset)) in encodings.into_iter().enumerate() {
+        assert_eq!(
+            &encoding[..],
+            &canonical[offset..offset + encoding.len()],
+            "encoding {i} is wrong"
+        );
+    }
 }
