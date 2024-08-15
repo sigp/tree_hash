@@ -2,12 +2,14 @@ use crate::{get_zero_hash, Hash256, HASHSIZE};
 use ethereum_hashing::{Context, Sha256Context, HASH_LEN};
 use smallvec::{smallvec, SmallVec};
 use std::mem;
+use thiserror::Error;
 
 type SmallVec8<T> = SmallVec<[T; 8]>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Error, Clone, Debug, PartialEq)]
 pub enum Error {
     /// The maximum number of leaves defined by the initialization `depth` has been exceed.
+    #[error("The maximum number of leaves {max_leaves} has beed exceed.")]
     MaximumLeavesExceeded { max_leaves: usize },
 }
 
