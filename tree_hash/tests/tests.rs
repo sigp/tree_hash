@@ -142,9 +142,8 @@ struct Shape {
 #[tree_hash(struct_behaviour = "profile")]
 #[tree_hash(max_fields = "typenum::U8")]
 struct Square {
-    #[tree_hash(stable_index = 0)]
+    // We always start with a stable_index of 0.
     side: u16,
-    #[tree_hash(stable_index = 1)]
     color: u8,
 }
 
@@ -154,7 +153,10 @@ struct Square {
 struct Circle {
     #[tree_hash(stable_index = 1)]
     color: u8,
-    #[tree_hash(stable_index = 2)]
+    #[tree_hash(skip_hashing)]
+    phantom: u8,
+    // Note that we do not need to specify `stable_index = 2` here since
+    // we always increment by 1 from the previous index.
     radius: u16,
 }
 
@@ -188,6 +190,7 @@ fn shape_2() {
 
     let circle = Circle {
         color: 1,
+        phantom: 6,
         radius: 42,
     };
 
@@ -200,6 +203,7 @@ fn shape_enum() {
 
     let circle = Circle {
         color: 1,
+        phantom: 6,
         radius: 14,
     };
 

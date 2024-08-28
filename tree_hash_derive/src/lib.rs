@@ -361,6 +361,9 @@ fn tree_hash_derive_struct_profile(
     let set_active_fields = &mut vec![];
     let hashes = &mut vec![];
 
+    // Assume a starting index of 0.
+    let mut index = 0;
+
     for (ty, ident, field_opt) in parse_tree_hash_fields(struct_data) {
         let mut is_optional = false;
         if field_opt.skip_hashing {
@@ -374,12 +377,9 @@ fn tree_hash_derive_struct_profile(
             }
         };
 
-        let index = if let Some(index) = field_opt.stable_index {
-            index
-        } else {
-            panic!("#[tree_hash(struct_behaviour = \"profile\")] requires that every field be tagged with a valid \
-                #[tree_hash(stable_index = usize)]")
-        };
+        if let Some(new_index) = field_opt.stable_index {
+            index = new_index;
+        }
 
         if ty_inner_type("Option", ty).is_some() {
             is_optional = true;
@@ -407,6 +407,9 @@ fn tree_hash_derive_struct_profile(
                     .expect("tree hash derive should not apply too many leaves");
             });
         }
+
+        // Increment the index.
+        index += 1;
     }
 
     let output = quote! {
