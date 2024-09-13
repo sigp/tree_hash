@@ -188,7 +188,7 @@ where
     }
 
     fn tree_hash_packed_encoding(self) -> PackedEncoding {
-        self.as_ref().tree_hash_packed_encoding()
+        Arc::as_ref(self).tree_hash_packed_encoding()
     }
 
     fn tree_hash_packing_factor() -> usize {
@@ -196,7 +196,7 @@ where
     }
 
     fn tree_hash_root(self) -> Hash256 {
-        self.as_ref().tree_hash_root()
+        Arc::as_ref(self).tree_hash_root()
     }
 }
 
