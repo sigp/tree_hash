@@ -112,44 +112,22 @@ pub enum TreeHashType {
 pub trait TreeHash {
     fn tree_hash_type() -> TreeHashType;
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding;
+    fn tree_hash_packed_encoding(self) -> PackedEncoding;
 
     fn tree_hash_packing_factor() -> usize;
 
-    fn tree_hash_root(&self) -> Hash256;
-}
-
-/// Punch through references.
-impl<'a, T> TreeHash for &'a T
-where
-    T: TreeHash,
-{
-    fn tree_hash_type() -> TreeHashType {
-        T::tree_hash_type()
-    }
-
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        T::tree_hash_packed_encoding(*self)
-    }
-
-    fn tree_hash_packing_factor() -> usize {
-        T::tree_hash_packing_factor()
-    }
-
-    fn tree_hash_root(&self) -> Hash256 {
-        T::tree_hash_root(*self)
-    }
+    fn tree_hash_root(self) -> Hash256;
 }
 
 #[macro_export]
 macro_rules! tree_hash_ssz_encoding_as_vector {
     ($type: ident) => {
-        impl tree_hash::TreeHash for $type {
+        impl tree_hash::TreeHash for &$type {
             fn tree_hash_type() -> tree_hash::TreeHashType {
                 tree_hash::TreeHashType::Vector
             }
 
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> PackedEncoding {
                 unreachable!("Vector should never be packed.")
             }
 
@@ -157,7 +135,7 @@ macro_rules! tree_hash_ssz_encoding_as_vector {
                 unreachable!("Vector should never be packed.")
             }
 
-            fn tree_hash_root(&self) -> Vec<u8> {
+            fn tree_hash_root(self) -> Vec<u8> {
                 tree_hash::merkle_root(&ssz::ssz_encode(self))
             }
         }
@@ -167,12 +145,12 @@ macro_rules! tree_hash_ssz_encoding_as_vector {
 #[macro_export]
 macro_rules! tree_hash_ssz_encoding_as_list {
     ($type: ident) => {
-        impl tree_hash::TreeHash for $type {
+        impl tree_hash::TreeHash for &$type {
             fn tree_hash_type() -> tree_hash::TreeHashType {
                 tree_hash::TreeHashType::List
             }
 
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> PackedEncoding {
                 unreachable!("List should never be packed.")
             }
 
@@ -180,7 +158,7 @@ macro_rules! tree_hash_ssz_encoding_as_list {
                 unreachable!("List should never be packed.")
             }
 
-            fn tree_hash_root(&self) -> Vec<u8> {
+            fn tree_hash_root(self) -> Vec<u8> {
                 ssz::ssz_encode(self).tree_hash_root()
             }
         }
