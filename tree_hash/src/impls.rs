@@ -10,12 +10,12 @@ fn int_to_hash256(int: u64) -> Hash256 {
 
 macro_rules! impl_for_bitsize {
     ($type: ident, $bit_size: expr) => {
-        impl TreeHash for $type {
+        impl TreeHash for &$type {
             fn tree_hash_type() -> TreeHashType {
                 TreeHashType::Basic
             }
 
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> PackedEncoding {
                 PackedEncoding::from_slice(&self.to_le_bytes())
             }
 
@@ -24,7 +24,7 @@ macro_rules! impl_for_bitsize {
             }
 
             #[allow(clippy::cast_lossless)] // Lint does not apply to all uses of this macro.
-            fn tree_hash_root(&self) -> Hash256 {
+            fn tree_hash_root(self) -> Hash256 {
                 int_to_hash256(*self as u64)
             }
         }
@@ -37,20 +37,20 @@ impl_for_bitsize!(u32, 32);
 impl_for_bitsize!(u64, 64);
 impl_for_bitsize!(usize, 64);
 
-impl TreeHash for bool {
+impl TreeHash for &bool {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Basic
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         (*self as u8).tree_hash_packed_encoding()
     }
 
     fn tree_hash_packing_factor() -> usize {
-        u8::tree_hash_packing_factor()
+        <&u8>::tree_hash_packing_factor()
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         int_to_hash256(*self as u64)
     }
 }
@@ -58,12 +58,12 @@ impl TreeHash for bool {
 /// Only valid for byte types less than 32 bytes.
 macro_rules! impl_for_lt_32byte_u8_array {
     ($len: expr) => {
-        impl TreeHash for [u8; $len] {
+        impl TreeHash for &[u8; $len] {
             fn tree_hash_type() -> TreeHashType {
                 TreeHashType::Vector
             }
 
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> PackedEncoding {
                 unreachable!("bytesN should never be packed.")
             }
 
@@ -71,7 +71,7 @@ macro_rules! impl_for_lt_32byte_u8_array {
                 unreachable!("bytesN should never be packed.")
             }
 
-            fn tree_hash_root(&self) -> Hash256 {
+            fn tree_hash_root(self) -> Hash256 {
                 let mut result = [0; 32];
                 result[0..$len].copy_from_slice(&self[..]);
                 Hash256::from_slice(&result)
@@ -83,12 +83,12 @@ macro_rules! impl_for_lt_32byte_u8_array {
 impl_for_lt_32byte_u8_array!(4);
 impl_for_lt_32byte_u8_array!(32);
 
-impl TreeHash for [u8; 48] {
+impl TreeHash for &[u8; 48] {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         unreachable!("Vector should never be packed.")
     }
 
@@ -96,55 +96,55 @@ impl TreeHash for [u8; 48] {
         unreachable!("Vector should never be packed.")
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         let values_per_chunk = BYTES_PER_CHUNK;
         let minimum_chunk_count = (48 + values_per_chunk - 1) / values_per_chunk;
         merkle_root(self, minimum_chunk_count)
     }
 }
 
-impl TreeHash for U128 {
+impl TreeHash for &U128 {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Basic
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(&self.to_le_bytes::<{ Self::BYTES }>())
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
+        PackedEncoding::from_slice(&self.to_le_bytes::<16>())
     }
 
     fn tree_hash_packing_factor() -> usize {
         2
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
-        Hash256::right_padding_from(&self.to_le_bytes::<{ Self::BYTES }>())
+    fn tree_hash_root(self) -> Hash256 {
+        Hash256::right_padding_from(&self.to_le_bytes::<16>())
     }
 }
 
-impl TreeHash for U256 {
+impl TreeHash for &U256 {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Basic
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from(self.to_le_bytes::<{ Self::BYTES }>())
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
+        PackedEncoding::from(self.to_le_bytes::<32>())
     }
 
     fn tree_hash_packing_factor() -> usize {
         1
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
-        Hash256::from(self.to_le_bytes::<{ Self::BYTES }>())
+    fn tree_hash_root(self) -> Hash256 {
+        Hash256::from(self.to_le_bytes::<32>())
     }
 }
 
-impl TreeHash for Address {
+impl TreeHash for &Address {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         let mut result = [0; 32];
         result[0..20].copy_from_slice(self.as_slice());
         PackedEncoding::from_slice(&result)
@@ -154,19 +154,19 @@ impl TreeHash for Address {
         1
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         let mut result = [0; 32];
         result[0..20].copy_from_slice(self.as_slice());
         Hash256::from_slice(&result)
     }
 }
 
-impl TreeHash for B256 {
+impl TreeHash for &B256 {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         PackedEncoding::from_slice(self.as_slice())
     }
 
@@ -174,25 +174,28 @@ impl TreeHash for B256 {
         1
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         *self
     }
 }
 
-impl<T: TreeHash> TreeHash for Arc<T> {
+impl<'a, T> TreeHash for &'a Arc<T>
+where
+    &'a T: TreeHash,
+{
     fn tree_hash_type() -> TreeHashType {
-        T::tree_hash_type()
+        <&T>::tree_hash_type()
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         self.as_ref().tree_hash_packed_encoding()
     }
 
     fn tree_hash_packing_factor() -> usize {
-        T::tree_hash_packing_factor()
+        <&T>::tree_hash_packing_factor()
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         self.as_ref().tree_hash_root()
     }
 }

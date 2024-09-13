@@ -115,12 +115,12 @@ fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> Toke
     let num_leaves = idents.len();
 
     let output = quote! {
-        impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
+        impl #impl_generics tree_hash::TreeHash for &#name #ty_generics #where_clause {
             fn tree_hash_type() -> tree_hash::TreeHashType {
                 tree_hash::TreeHashType::Container
             }
 
-            fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> tree_hash::PackedEncoding {
                 unreachable!("Struct should never be packed.")
             }
 
@@ -128,7 +128,7 @@ fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> Toke
                 unreachable!("Struct should never be packed.")
             }
 
-            fn tree_hash_root(&self) -> tree_hash::Hash256 {
+            fn tree_hash_root(self) -> tree_hash::Hash256 {
                 let mut hasher = tree_hash::MerkleHasher::with_leaves(#num_leaves);
 
                 #(
@@ -182,14 +182,14 @@ fn tree_hash_derive_enum_transparent(
 
             let ty = &(&variant.fields).into_iter().next().unwrap().ty;
             let type_expr = quote! {
-                <#ty as tree_hash::TreeHash>::tree_hash_type()
+                <&#ty as tree_hash::TreeHash>::tree_hash_type()
             };
             (pattern, type_expr)
         })
         .unzip();
 
     let output = quote! {
-        impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
+        impl #impl_generics tree_hash::TreeHash for &#name #ty_generics #where_clause {
             fn tree_hash_type() -> tree_hash::TreeHashType {
                 #(
                     assert_eq!(
@@ -201,7 +201,7 @@ fn tree_hash_derive_enum_transparent(
                 tree_hash::TreeHashType::Container
             }
 
-            fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> tree_hash::PackedEncoding {
                 unreachable!("Enum should never be packed")
             }
 
@@ -209,7 +209,7 @@ fn tree_hash_derive_enum_transparent(
                 unreachable!("Enum should never be packed")
             }
 
-            fn tree_hash_root(&self) -> tree_hash::Hash256 {
+            fn tree_hash_root(self) -> tree_hash::Hash256 {
                 match self {
                     #(
                         #patterns => inner.tree_hash_root(),
@@ -253,12 +253,12 @@ fn tree_hash_derive_enum_union(derive_input: &DeriveInput, enum_data: &DataEnum)
     let union_selectors = compute_union_selectors(patterns.len());
 
     let output = quote! {
-        impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
+        impl #impl_generics tree_hash::TreeHash for &#name #ty_generics #where_clause {
             fn tree_hash_type() -> tree_hash::TreeHashType {
                 tree_hash::TreeHashType::Container
             }
 
-            fn tree_hash_packed_encoding(&self) -> tree_hash::PackedEncoding {
+            fn tree_hash_packed_encoding(self) -> tree_hash::PackedEncoding {
                 unreachable!("Enum should never be packed")
             }
 
@@ -266,7 +266,7 @@ fn tree_hash_derive_enum_union(derive_input: &DeriveInput, enum_data: &DataEnum)
                 unreachable!("Enum should never be packed")
             }
 
-            fn tree_hash_root(&self) -> tree_hash::Hash256 {
+            fn tree_hash_root(self) -> tree_hash::Hash256 {
                 match self {
                     #(
                         #patterns => {
