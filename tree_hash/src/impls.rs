@@ -1,6 +1,8 @@
 use super::*;
 use alloy_primitives::{Address, B256, U128, U256};
+use ssz::{Bitfield, Fixed, Variable};
 use std::sync::Arc;
+use typenum::Unsigned;
 
 fn int_to_hash256(int: u64) -> Hash256 {
     let mut bytes = [0; HASHSIZE];
@@ -194,6 +196,86 @@ impl<T: TreeHash> TreeHash for Arc<T> {
 
     fn tree_hash_root(&self) -> Hash256 {
         self.as_ref().tree_hash_root()
+    }
+}
+
+impl<T: TreeHash> TreeHash for Option<T> {
+    fn tree_hash_type() -> TreeHashType {
+        T::tree_hash_type()
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        match self {
+            Some(inner) => inner.tree_hash_packed_encoding(),
+            None => unreachable!(),
+        }
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        T::tree_hash_packing_factor()
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        match self {
+            Some(inner) => inner.tree_hash_root(),
+            None => unreachable!(),
+        }
+    }
+}
+
+/// A helper function providing common functionality for finding the Merkle root of some bytes that
+/// represent a bitfield.
+pub fn bitfield_bytes_tree_hash_root<N: Unsigned>(bytes: &[u8]) -> Hash256 {
+    let byte_size = (N::to_usize() + 7) / 8;
+    let leaf_count = (byte_size + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
+
+    let mut hasher = MerkleHasher::with_leaves(leaf_count);
+
+    hasher
+        .write(bytes)
+        .expect("bitfield should not exceed tree hash leaf limit");
+
+    hasher
+        .finish()
+        .expect("bitfield tree hash buffer should not exceed leaf limit")
+}
+
+impl<N: Unsigned + Clone> TreeHash for Bitfield<Variable<N>> {
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::List
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        unreachable!("List should never be packed.")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        unreachable!("List should never be packed.")
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        // Note: we use `as_slice` because it does _not_ have the length-delimiting bit set (or
+        // present).
+        let root = bitfield_bytes_tree_hash_root::<N>(self.as_slice());
+        mix_in_length(&root, self.len())
+    }
+}
+
+impl<N: Unsigned + Clone> TreeHash for Bitfield<Fixed<N>> {
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::Vector
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        unreachable!("Vector should never be packed.")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        unreachable!("Vector should never be packed.")
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        bitfield_bytes_tree_hash_root::<N>(self.as_slice())
     }
 }
 
