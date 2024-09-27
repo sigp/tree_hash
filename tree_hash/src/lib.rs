@@ -119,6 +119,16 @@ pub trait TreeHash {
     fn tree_hash_root(&self) -> Hash256;
 }
 
+pub trait TreeHashMut {
+    fn tree_hash_type_mut() -> TreeHashType;
+
+    fn tree_hash_packed_encoding_mut(&self) -> PackedEncoding;
+
+    fn tree_hash_packing_factor_mut() -> usize;
+
+    fn tree_hash_root_mut(&mut self) -> Hash256;
+}
+
 /// Punch through references.
 impl<'a, T> TreeHash for &'a T
 where
@@ -138,6 +148,27 @@ where
 
     fn tree_hash_root(&self) -> Hash256 {
         T::tree_hash_root(*self)
+    }
+}
+
+impl<T> TreeHashMut for T
+where
+    T: TreeHash,
+{
+    fn tree_hash_type_mut() -> TreeHashType {
+        <T as TreeHash>::tree_hash_type()
+    }
+
+    fn tree_hash_packed_encoding_mut(&self) -> PackedEncoding {
+        <T as TreeHash>::tree_hash_packed_encoding(self)
+    }
+
+    fn tree_hash_packing_factor_mut() -> usize {
+        <T as TreeHash>::tree_hash_packing_factor()
+    }
+
+    fn tree_hash_root_mut(&mut self) -> Hash256 {
+        <T as TreeHash>::tree_hash_root(self)
     }
 }
 
