@@ -199,30 +199,6 @@ impl<T: TreeHash> TreeHash for Arc<T> {
     }
 }
 
-impl<T: TreeHash> TreeHash for Option<T> {
-    fn tree_hash_type() -> TreeHashType {
-        T::tree_hash_type()
-    }
-
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        match self {
-            Some(inner) => inner.tree_hash_packed_encoding(),
-            None => unreachable!(),
-        }
-    }
-
-    fn tree_hash_packing_factor() -> usize {
-        T::tree_hash_packing_factor()
-    }
-
-    fn tree_hash_root(&self) -> Hash256 {
-        match self {
-            Some(inner) => inner.tree_hash_root(),
-            None => unreachable!(),
-        }
-    }
-}
-
 /// A helper function providing common functionality for finding the Merkle root of some bytes that
 /// represent a bitfield.
 pub fn bitfield_bytes_tree_hash_root<N: Unsigned>(bytes: &[u8]) -> Hash256 {
