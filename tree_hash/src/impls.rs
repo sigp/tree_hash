@@ -258,6 +258,9 @@ impl<N: Unsigned + Clone> TreeHash for Bitfield<Fixed<N>> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ssz::{BitList, BitVector};
+    use std::str::FromStr;
+    use typenum::{U32, U8};
 
     #[test]
     fn bool() {
@@ -293,6 +296,38 @@ mod test {
                 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
+        );
+    }
+
+    #[test]
+    fn bitvector() {
+        let empty_bitvector = BitVector::<U8>::new();
+        assert_eq!(empty_bitvector.tree_hash_root(), Hash256::ZERO);
+
+        let small_bitvector_bytes = vec![0xff_u8, 0xee, 0xdd, 0xcc];
+        let small_bitvector =
+            BitVector::<U32>::from_bytes(small_bitvector_bytes.clone().into()).unwrap();
+        assert_eq!(
+            small_bitvector.tree_hash_root().as_slice()[..4],
+            small_bitvector_bytes
+        );
+    }
+
+    #[test]
+    fn bitlist() {
+        let empty_bitlist = BitList::<U8>::with_capacity(8).unwrap();
+        assert_eq!(
+            empty_bitlist.tree_hash_root(),
+            Hash256::from_str("0x5ac78d953211aa822c3ae6e9b0058e42394dd32e5992f29f9c12da3681985130")
+                .unwrap()
+        );
+
+        let mut small_bitlist = BitList::<U32>::with_capacity(4).unwrap();
+        small_bitlist.set(1, true).unwrap();
+        assert_eq!(
+            small_bitlist.tree_hash_root(),
+            Hash256::from_str("0x7eb03d394d83a389980b79897207be3a6512d964cb08978bb7f3cfc0db8cfb8a")
+                .unwrap()
         );
     }
 }
