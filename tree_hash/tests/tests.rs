@@ -14,12 +14,12 @@ impl From<Vec<u8>> for HashVec {
     }
 }
 
-impl tree_hash::TreeHash for HashVec {
+impl tree_hash::TreeHash for &HashVec {
     fn tree_hash_type() -> tree_hash::TreeHashType {
         tree_hash::TreeHashType::List
     }
 
-    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+    fn tree_hash_packed_encoding(self) -> PackedEncoding {
         unreachable!("List should never be packed.")
     }
 
@@ -27,7 +27,7 @@ impl tree_hash::TreeHash for HashVec {
         unreachable!("List should never be packed.")
     }
 
-    fn tree_hash_root(&self) -> Hash256 {
+    fn tree_hash_root(self) -> Hash256 {
         let mut hasher =
             MerkleHasher::with_leaves((self.vec.len() + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK);
 
