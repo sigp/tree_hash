@@ -1,5 +1,5 @@
 use super::*;
-use alloy_primitives::{Address, B256, U128, U256};
+use alloy_primitives::{Address, FixedBytes, B256, U128, U256};
 use ssz::{Bitfield, Fixed, Variable};
 use std::sync::Arc;
 use typenum::Unsigned;
@@ -104,6 +104,31 @@ impl TreeHash for [u8; 48] {
         merkle_root(self, minimum_chunk_count)
     }
 }
+
+macro_rules! impl_for_fixed_bytes {
+    ($len: expr) => {
+        impl TreeHash for FixedBytes<$len> {
+            fn tree_hash_type() -> TreeHashType {
+                TreeHashType::Vector
+            }
+
+            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+                unreachable!("Vector should never be packed.")
+            }
+
+            fn tree_hash_packing_factor() -> usize {
+                unreachable!("Vector should never be packed.")
+            }
+
+            fn tree_hash_root(&self) -> Hash256 {
+                let values_per_chunk = BYTES_PER_CHUNK;
+                let minimum_chunk_count = ($len + values_per_chunk - 1) / values_per_chunk;
+                merkle_root(&self.0, minimum_chunk_count)
+            }
+        }
+    };
+}
+impl_for_fixed_bytes!(48);
 
 impl TreeHash for U128 {
     fn tree_hash_type() -> TreeHashType {
