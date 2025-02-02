@@ -57,35 +57,7 @@ impl TreeHash for bool {
     }
 }
 
-/// Only valid for byte types less than 32 bytes.
-macro_rules! impl_for_lt_32byte_u8_array {
-    ($len: expr) => {
-        impl TreeHash for [u8; $len] {
-            fn tree_hash_type() -> TreeHashType {
-                TreeHashType::Vector
-            }
-
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-                unreachable!("bytesN should never be packed.")
-            }
-
-            fn tree_hash_packing_factor() -> usize {
-                unreachable!("bytesN should never be packed.")
-            }
-
-            fn tree_hash_root(&self) -> Hash256 {
-                let mut result = [0; 32];
-                result[0..$len].copy_from_slice(&self[..]);
-                Hash256::from_slice(&result)
-            }
-        }
-    };
-}
-
-impl_for_lt_32byte_u8_array!(4);
-impl_for_lt_32byte_u8_array!(32);
-
-impl TreeHash for [u8; 48] {
+impl<const N: usize> TreeHash for [u8; N] {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
@@ -100,7 +72,7 @@ impl TreeHash for [u8; 48] {
 
     fn tree_hash_root(&self) -> Hash256 {
         let values_per_chunk = BYTES_PER_CHUNK;
-        let minimum_chunk_count = (48 + values_per_chunk - 1) / values_per_chunk;
+        let minimum_chunk_count = (N + values_per_chunk - 1) / values_per_chunk;
         merkle_root(self, minimum_chunk_count)
     }
 }
@@ -147,11 +119,11 @@ impl TreeHash for Address {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        unreachable!("Vector should not be packed")
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        unreachable!("Vector should not be packed")
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
@@ -168,16 +140,15 @@ impl<const N: usize> TreeHash for FixedBytes<N> {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        unreachable!("Vector should not be packed")
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        unreachable!("Vector should not be packed")
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        let minimum_chunk_count: usize = (N + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-        merkle_root(&self.0, minimum_chunk_count)
+        self.0.tree_hash_root()
     }
 }
 
