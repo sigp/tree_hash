@@ -1,5 +1,5 @@
 use super::*;
-use alloy_primitives::{Address, B256, U128, U256};
+use alloy_primitives::{Address, FixedBytes, U128, U256};
 use ssz::{Bitfield, Fixed, Variable};
 use std::sync::Arc;
 use typenum::Unsigned;
@@ -161,7 +161,8 @@ impl TreeHash for Address {
     }
 }
 
-impl TreeHash for B256 {
+// This implementation covers `Hash256`/`B256` as well.
+impl<const N: usize> TreeHash for FixedBytes<N> {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
@@ -175,7 +176,8 @@ impl TreeHash for B256 {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        *self
+        let minimum_chunk_count: usize = (N + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
+        merkle_root(&self.0, minimum_chunk_count)
     }
 }
 
@@ -327,5 +329,30 @@ mod test {
             Hash256::from_str("0x7eb03d394d83a389980b79897207be3a6512d964cb08978bb7f3cfc0db8cfb8a")
                 .unwrap()
         );
+    }
+
+    // Only basic types should be packed.
+    #[test]
+    #[should_panic]
+    fn fixed_bytes_no_packed_encoding() {
+        Hash256::ZERO.tree_hash_packed_encoding();
+    }
+
+    #[test]
+    #[should_panic]
+    fn fixed_bytes_no_packing_factor() {
+        Hash256::tree_hash_packing_factor();
+    }
+
+    #[test]
+    #[should_panic]
+    fn address_no_packed_encoding() {
+        Address::ZERO.tree_hash_packed_encoding();
+    }
+
+    #[test]
+    #[should_panic]
+    fn address_no_packing_factor() {
+        Address::tree_hash_packing_factor();
     }
 }
