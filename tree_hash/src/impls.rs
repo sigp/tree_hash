@@ -147,13 +147,11 @@ impl TreeHash for Address {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        let mut result = [0; 32];
-        result[0..20].copy_from_slice(self.as_slice());
-        PackedEncoding::from_slice(&result)
+        unreachable!("Vector should not be packed")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        1
+        unreachable!("Vector should not be packed")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
@@ -169,11 +167,11 @@ impl TreeHash for B256 {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(self.as_slice())
+        unreachable!("Vector should not be packed")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        1
+        unreachable!("Vector should not be packed")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
