@@ -302,6 +302,65 @@ mod test {
         );
     }
 
+    #[test]
+    fn fixed_bytes_7() {
+        let data = [
+            [0, 1, 2, 3, 4, 5, 6],
+            [6, 5, 4, 3, 2, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ];
+        for bytes in data {
+            assert_eq!(bytes.tree_hash_root(), Hash256::right_padding_from(&bytes));
+        }
+    }
+
+    #[test]
+    fn address() {
+        let data = [
+            Address::ZERO,
+            Address::repeat_byte(0xff),
+            Address::right_padding_from(&[0, 1, 2, 3, 4, 5]),
+            Address::left_padding_from(&[10, 9, 8, 7, 6]),
+        ];
+        for address in data {
+            assert_eq!(
+                address.tree_hash_root(),
+                Hash256::right_padding_from(address.as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_bytes_32() {
+        let data = [
+            Hash256::ZERO,
+            Hash256::repeat_byte(0xff),
+            Hash256::right_padding_from(&[0, 1, 2, 3, 4, 5]),
+            Hash256::left_padding_from(&[10, 9, 8, 7, 6]),
+        ];
+        for bytes in data {
+            assert_eq!(bytes.tree_hash_root(), bytes);
+        }
+    }
+
+    #[test]
+    fn fixed_bytes_48() {
+        let data = [
+            (
+                FixedBytes::<48>::ZERO,
+                "0xf5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b",
+            ),
+            (
+                FixedBytes::<48>::repeat_byte(0xff),
+                "0x1e3915ef9ca4ed8619d472b72fb1833448756054b4de9acb439da54dff7166aa",
+            ),
+        ];
+        for (bytes, expected) in data {
+            assert_eq!(bytes.tree_hash_root(), Hash256::from_str(expected).unwrap());
+        }
+    }
+
     // Only basic types should be packed.
     #[test]
     #[should_panic]
