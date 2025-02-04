@@ -72,7 +72,7 @@ impl<const N: usize> TreeHash for [u8; N] {
 
     fn tree_hash_root(&self) -> Hash256 {
         let values_per_chunk = BYTES_PER_CHUNK;
-        let minimum_chunk_count = (N + values_per_chunk - 1) / values_per_chunk;
+        let minimum_chunk_count = N.div_ceil(values_per_chunk);
         merkle_root(self, minimum_chunk_count)
     }
 }
@@ -174,7 +174,7 @@ impl<T: TreeHash> TreeHash for Arc<T> {
 /// represent a bitfield.
 pub fn bitfield_bytes_tree_hash_root<N: Unsigned>(bytes: &[u8]) -> Hash256 {
     let byte_size = (N::to_usize() + 7) / 8;
-    let leaf_count = (byte_size + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
+    let leaf_count = byte_size.div_ceil(BYTES_PER_CHUNK);
 
     let mut hasher = MerkleHasher::with_leaves(leaf_count);
 

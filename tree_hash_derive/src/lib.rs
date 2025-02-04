@@ -78,8 +78,7 @@ fn get_hashable_fields_and_their_caches(
 /// The field attribute is: `#[tree_hash(skip_hashing)]`
 fn should_skip_hashing(field: &syn::Field) -> bool {
     field.attrs.iter().any(|attr| {
-        attr.path().is_ident("tree_hash")
-            && attr.parse_args::<Ident>().unwrap().to_string() == "skip_hashing"
+        attr.path().is_ident("tree_hash") && attr.parse_args::<Ident>().unwrap() == "skip_hashing"
     })
 }
 
