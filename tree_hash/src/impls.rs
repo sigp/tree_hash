@@ -1,5 +1,5 @@
 use super::*;
-use alloy_primitives::{Address, B256, U128, U256};
+use alloy_primitives::{Address, FixedBytes, U128, U256};
 use ssz::{Bitfield, Fixed, Variable};
 use std::sync::Arc;
 use typenum::Unsigned;
@@ -57,35 +57,7 @@ impl TreeHash for bool {
     }
 }
 
-/// Only valid for byte types less than 32 bytes.
-macro_rules! impl_for_lt_32byte_u8_array {
-    ($len: expr) => {
-        impl TreeHash for [u8; $len] {
-            fn tree_hash_type() -> TreeHashType {
-                TreeHashType::Vector
-            }
-
-            fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-                unreachable!("bytesN should never be packed.")
-            }
-
-            fn tree_hash_packing_factor() -> usize {
-                unreachable!("bytesN should never be packed.")
-            }
-
-            fn tree_hash_root(&self) -> Hash256 {
-                let mut result = [0; 32];
-                result[0..$len].copy_from_slice(&self[..]);
-                Hash256::from_slice(&result)
-            }
-        }
-    };
-}
-
-impl_for_lt_32byte_u8_array!(4);
-impl_for_lt_32byte_u8_array!(32);
-
-impl TreeHash for [u8; 48] {
+impl<const N: usize> TreeHash for [u8; N] {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
@@ -100,7 +72,7 @@ impl TreeHash for [u8; 48] {
 
     fn tree_hash_root(&self) -> Hash256 {
         let values_per_chunk = BYTES_PER_CHUNK;
-        let minimum_chunk_count = (48 + values_per_chunk - 1) / values_per_chunk;
+        let minimum_chunk_count = (N + values_per_chunk - 1) / values_per_chunk;
         merkle_root(self, minimum_chunk_count)
     }
 }
@@ -147,13 +119,11 @@ impl TreeHash for Address {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        let mut result = [0; 32];
-        result[0..20].copy_from_slice(self.as_slice());
-        PackedEncoding::from_slice(&result)
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        1
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
@@ -163,21 +133,22 @@ impl TreeHash for Address {
     }
 }
 
-impl TreeHash for B256 {
+// This implementation covers `Hash256`/`B256` as well.
+impl<const N: usize> TreeHash for FixedBytes<N> {
     fn tree_hash_type() -> TreeHashType {
         TreeHashType::Vector
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        PackedEncoding::from_slice(self.as_slice())
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        1
+        unreachable!("Vector should never be packed.")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        *self
+        self.0.tree_hash_root()
     }
 }
 
@@ -329,5 +300,89 @@ mod test {
             Hash256::from_str("0x7eb03d394d83a389980b79897207be3a6512d964cb08978bb7f3cfc0db8cfb8a")
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn fixed_bytes_7() {
+        let data = [
+            [0, 1, 2, 3, 4, 5, 6],
+            [6, 5, 4, 3, 2, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        ];
+        for bytes in data {
+            assert_eq!(bytes.tree_hash_root(), Hash256::right_padding_from(&bytes));
+        }
+    }
+
+    #[test]
+    fn address() {
+        let data = [
+            Address::ZERO,
+            Address::repeat_byte(0xff),
+            Address::right_padding_from(&[0, 1, 2, 3, 4, 5]),
+            Address::left_padding_from(&[10, 9, 8, 7, 6]),
+        ];
+        for address in data {
+            assert_eq!(
+                address.tree_hash_root(),
+                Hash256::right_padding_from(address.as_slice())
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_bytes_32() {
+        let data = [
+            Hash256::ZERO,
+            Hash256::repeat_byte(0xff),
+            Hash256::right_padding_from(&[0, 1, 2, 3, 4, 5]),
+            Hash256::left_padding_from(&[10, 9, 8, 7, 6]),
+        ];
+        for bytes in data {
+            assert_eq!(bytes.tree_hash_root(), bytes);
+        }
+    }
+
+    #[test]
+    fn fixed_bytes_48() {
+        let data = [
+            (
+                FixedBytes::<48>::ZERO,
+                "0xf5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b",
+            ),
+            (
+                FixedBytes::<48>::repeat_byte(0xff),
+                "0x1e3915ef9ca4ed8619d472b72fb1833448756054b4de9acb439da54dff7166aa",
+            ),
+        ];
+        for (bytes, expected) in data {
+            assert_eq!(bytes.tree_hash_root(), Hash256::from_str(expected).unwrap());
+        }
+    }
+
+    // Only basic types should be packed.
+    #[test]
+    #[should_panic]
+    fn fixed_bytes_no_packed_encoding() {
+        Hash256::ZERO.tree_hash_packed_encoding();
+    }
+
+    #[test]
+    #[should_panic]
+    fn fixed_bytes_no_packing_factor() {
+        Hash256::tree_hash_packing_factor();
+    }
+
+    #[test]
+    #[should_panic]
+    fn address_no_packed_encoding() {
+        Address::ZERO.tree_hash_packed_encoding();
+    }
+
+    #[test]
+    #[should_panic]
+    fn address_no_packing_factor() {
+        Address::tree_hash_packing_factor();
     }
 }

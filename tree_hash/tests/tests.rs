@@ -145,10 +145,6 @@ fn packed_encoding_example() {
         (U128::from(val).tree_hash_packed_encoding(), 0),
         (U128::from(0).tree_hash_packed_encoding(), 16),
         (
-            Hash256::from_slice(U256::from(val).as_le_slice()).tree_hash_packed_encoding(),
-            0,
-        ),
-        (
             Hash256::from_slice(U256::from(val).as_le_slice())
                 .tree_hash_root()
                 .0
@@ -161,10 +157,6 @@ fn packed_encoding_example() {
                 .tree_hash_root()
                 .0
                 .into(),
-            0,
-        ),
-        (
-            Address::from(U160::from(val).to_le_bytes::<20>()).tree_hash_packed_encoding(),
             0,
         ),
     ];
