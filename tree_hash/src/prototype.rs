@@ -1,18 +1,21 @@
-/*
-type Hash256 = [u8; 32];
-
-enum Error {
-    Oops
-}
-
-trait TreeHash {
-    fn get_field(&self, index: usize) -> Result<&dyn TreeHash, Error>;
-
-    fn merkle_proof(&self, generalized_index: usize) -> Result<Vec<Hash256>, Error>;
-}
-*/
-use crate::{TreeHash, TreeHashType, BYTES_PER_CHUNK};
+use crate::{Hash256, TreeHash, TreeHashType, BYTES_PER_CHUNK};
 use std::marker::PhantomData;
+
+pub enum Error {
+    Oops,
+}
+
+pub trait MerkleProof: TreeHash {
+    fn compute_proof<F>(&self) -> Result<Vec<Hash256>, Error>
+    where
+        Self: Resolve<F>,
+    {
+        let gindex = <Self as Resolve<F>>::gindex(1);
+        self.compute_proof_for_gindex(gindex)
+    }
+
+    fn compute_proof_for_gindex(&self, gindex: usize) -> Result<Vec<Hash256>, Error>;
+}
 
 // A path is a sequence of field accesses like `self.foo.bar`.
 //
@@ -51,6 +54,7 @@ where
     }
 }
 
+// FIXME: we don't currently enforce I < N at compile-time
 pub struct VecIndex<const I: usize, const N: usize>;
 
 impl<const I: usize, const N: usize> Field for VecIndex<I, N> {
