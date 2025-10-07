@@ -2,6 +2,7 @@ pub mod impls;
 mod merkle_hasher;
 mod merkleize_padded;
 mod merkleize_standard;
+pub mod prototype;
 
 pub use merkle_hasher::{Error, MerkleHasher};
 pub use merkleize_padded::merkleize_padded;
