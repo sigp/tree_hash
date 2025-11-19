@@ -1,14 +1,14 @@
 [package]
 name = "tree_hash_derive"
-version = "0.11.0"
-edition = "2021"
 description = "Procedural derive macros to accompany the tree_hash crate"
-license = "Apache-2.0"
-readme = "../README.md"
-repository = "https://github.com/sigp/tree_hash"
 documentation = "https://docs.rs/tree_hash_derive"
-keywords = ["ethereum"]
-categories = ["cryptography::cryptocurrencies"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 proc-macro = true
