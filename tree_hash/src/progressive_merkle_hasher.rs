@@ -154,7 +154,8 @@ fn merkleize_progressive(chunks: &[[u8; BYTES_PER_CHUNK]], num_leaves: usize) ->
     // Compute left subtree: recursive progressive merkle tree with num_leaves * 4
     let left_root = merkleize_progressive(left_chunks, num_leaves * 4);
 
-    // Combine left and right roots
+    // Combine left and right roots according to spec: hash(a, b) where
+    // a = left subtree (recursive progressive), b = right subtree (binary tree)
     Hash256::from_slice(&hash32_concat(left_root.as_slice(), right_root.as_slice()))
 }
 
