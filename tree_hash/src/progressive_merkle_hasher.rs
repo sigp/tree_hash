@@ -38,9 +38,9 @@ pub enum Error {
 /// necessary state (completed subtree roots). When a level is filled, its binary merkle
 /// root is computed and stored, avoiding the need to keep all chunks in memory.
 pub struct ProgressiveMerkleHasher {
-    /// Completed subtree roots at each level, stored in reverse order.
-    /// Index 0 = most recent (smallest) completed level, higher indices = larger levels.
-    /// Each level i contains 4^i leaves.
+    /// Completed subtree roots at each level, stored in order of completion.
+    /// Index 0 = first completed level (1 leaf), index 1 = second level (4 leaves), etc.
+    /// Level i contains 4^i leaves.
     completed_roots: Vec<Hash256>,
     /// Chunks currently being accumulated for the next level to fill.
     current_chunks: Vec<[u8; BYTES_PER_CHUNK]>,
@@ -111,8 +111,7 @@ impl ProgressiveMerkleHasher {
         // Check if current level is complete
         if self.current_chunks.len() == self.current_level_size {
             // Compute the merkle root for this level
-            let bytes: Vec<u8> = self.current_chunks.iter().flat_map(|c| c.iter().copied()).collect();
-            let root = merkle_root(&bytes, self.current_level_size);
+            let root = Self::compute_level_root(&self.current_chunks, self.current_level_size);
             
             // Store this completed root
             self.completed_roots.push(root);
@@ -123,6 +122,12 @@ impl ProgressiveMerkleHasher {
         }
         
         Ok(())
+    }
+    
+    /// Helper to compute the merkle root for a level's chunks.
+    fn compute_level_root(chunks: &[[u8; BYTES_PER_CHUNK]], num_leaves: usize) -> Hash256 {
+        let bytes: Vec<u8> = chunks.iter().flat_map(|c| c.iter().copied()).collect();
+        merkle_root(&bytes, num_leaves)
     }
 
     /// Finish the hasher and return the progressive merkle root.
@@ -152,8 +157,7 @@ impl ProgressiveMerkleHasher {
         
         // If there are chunks in current_chunks (partial level), compute their root
         let current_root = if !self.current_chunks.is_empty() {
-            let bytes: Vec<u8> = self.current_chunks.iter().flat_map(|c| c.iter().copied()).collect();
-            Some(merkle_root(&bytes, self.current_level_size))
+            Some(Self::compute_level_root(&self.current_chunks, self.current_level_size))
         } else {
             None
         };
@@ -166,12 +170,13 @@ impl ProgressiveMerkleHasher {
     
     /// Build the final progressive merkle root by combining completed subtree roots.
     ///
-    /// The progressive tree structure: at each node, hash(left=next_levels, right=this_level).
-    /// Build from the current (largest/partial) level backwards to the first level.
+    /// The progressive tree structure: at each node, hash(left=deeper_levels, right=this_level).
+    /// This builds the tree from the largest (leftmost) level backwards to the smallest (rightmost).
     fn build_progressive_root(&self, current_root: Option<Hash256>) -> Hash256 {
-        // Start from the leftmost (largest) level
-        // If there's a current partial level, it needs to be wrapped: hash(ZERO, current_root)
-        // because the spec applies the structure at every level
+        // Start from the leftmost (largest/deepest) level
+        // Per EIP-7916 spec, even partial levels follow the progressive structure:
+        // merkleize_progressive(chunks, n) = hash(merkleize_progressive(chunks[n:], n*4), merkleize(chunks[:n], n))
+        // So a partial level with k chunks becomes: hash(ZERO (no further chunks), merkleize(chunks, n))
         let mut result = if let Some(curr) = current_root {
             Hash256::from_slice(&hash32_concat(Hash256::ZERO.as_slice(), curr.as_slice()))
         } else {
@@ -179,8 +184,9 @@ impl ProgressiveMerkleHasher {
         };
         
         // Process completed roots from largest to smallest (reverse order)
-        // At each step: result = hash(result, completed_root) because
-        // result is the accumulated left subtree, completed_root is the right subtree at this level
+        // At each step: result = hash(result, completed_root)
+        // - result accumulates the left subtree (deeper/larger levels)
+        // - completed_root is the right subtree at this level
         for &completed_root in self.completed_roots.iter().rev() {
             result = Hash256::from_slice(&hash32_concat(
                 result.as_slice(),
