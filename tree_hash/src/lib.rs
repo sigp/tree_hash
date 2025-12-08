@@ -2,10 +2,12 @@ pub mod impls;
 mod merkle_hasher;
 mod merkleize_padded;
 mod merkleize_standard;
+mod progressive_merkle_hasher;
 
 pub use merkle_hasher::{Error, MerkleHasher};
 pub use merkleize_padded::merkleize_padded;
 pub use merkleize_standard::merkleize_standard;
+pub use progressive_merkle_hasher::ProgressiveMerkleHasher;
 
 use ethereum_hashing::{hash_fixed, ZERO_HASHES, ZERO_HASHES_MAX_INDEX};
 use smallvec::SmallVec;
