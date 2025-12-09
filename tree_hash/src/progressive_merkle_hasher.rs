@@ -1,4 +1,4 @@
-use crate::{merkle_root, Hash256, BYTES_PER_CHUNK};
+use crate::{Hash256, MerkleHasher, BYTES_PER_CHUNK};
 use ethereum_hashing::hash32_concat;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -42,10 +42,12 @@ pub struct ProgressiveMerkleHasher {
     /// Index 0 = first completed level (1 leaf), index 1 = second level (4 leaves), etc.
     /// Level i contains 4^i leaves.
     completed_roots: Vec<Hash256>,
-    /// Chunks currently being accumulated for the next level to fill.
-    current_chunks: Vec<[u8; BYTES_PER_CHUNK]>,
+    /// MerkleHasher for computing the current level's binary tree root.
+    current_hasher: MerkleHasher,
     /// The number of leaves expected at the current level (1, 4, 16, 64, ...).
     current_level_size: usize,
+    /// Number of chunks written to the current hasher.
+    current_level_chunks: usize,
     /// Buffer for bytes that haven't been completed into a chunk yet.
     buffer: Vec<u8>,
     /// Maximum number of leaves this hasher can accept.
@@ -64,8 +66,9 @@ impl ProgressiveMerkleHasher {
         assert!(max_leaves > 0, "must have at least one leaf");
         Self {
             completed_roots: Vec::new(),
-            current_chunks: Vec::new(),
+            current_hasher: MerkleHasher::with_leaves(1),
             current_level_size: 1,
+            current_level_chunks: 0,
             buffer: Vec::new(),
             max_leaves,
             total_chunks: 0,
@@ -105,29 +108,38 @@ impl ProgressiveMerkleHasher {
     
     /// Process a single chunk by adding it to the current level and completing the level if full.
     fn process_chunk(&mut self, chunk: [u8; BYTES_PER_CHUNK]) -> Result<(), Error> {
-        self.current_chunks.push(chunk);
+        // Write the chunk to the current MerkleHasher
+        self.current_hasher.write(&chunk).map_err(|_| Error::MaximumLeavesExceeded {
+            max_leaves: self.max_leaves,
+        })?;
+        
+        self.current_level_chunks += 1;
         self.total_chunks += 1;
         
         // Check if current level is complete
-        if self.current_chunks.len() == self.current_level_size {
-            // Compute the merkle root for this level
-            let root = Self::compute_level_root(&self.current_chunks, self.current_level_size);
+        if self.current_level_chunks == self.current_level_size {
+            // Move to next level (4x larger)
+            let next_level_size = self.current_level_size * 4;
+            
+            // Replace the current hasher with a new one for the next level
+            let completed_hasher = std::mem::replace(
+                &mut self.current_hasher,
+                MerkleHasher::with_leaves(next_level_size)
+            );
+            
+            // Finish the completed hasher to get the root
+            let root = completed_hasher.finish().map_err(|_| Error::MaximumLeavesExceeded {
+                max_leaves: self.max_leaves,
+            })?;
             
             // Store this completed root
             self.completed_roots.push(root);
             
-            // Move to next level (4x larger)
-            self.current_chunks.clear();
-            self.current_level_size *= 4;
+            self.current_level_size = next_level_size;
+            self.current_level_chunks = 0;
         }
         
         Ok(())
-    }
-    
-    /// Helper to compute the merkle root for a level's chunks.
-    fn compute_level_root(chunks: &[[u8; BYTES_PER_CHUNK]], num_leaves: usize) -> Hash256 {
-        let bytes: Vec<u8> = chunks.iter().flat_map(|c| c.iter().copied()).collect();
-        merkle_root(&bytes, num_leaves)
     }
 
     /// Finish the hasher and return the progressive merkle root.
@@ -155,9 +167,16 @@ impl ProgressiveMerkleHasher {
             return Ok(Hash256::ZERO);
         }
         
-        // If there are chunks in current_chunks (partial level), compute their root
-        let current_root = if !self.current_chunks.is_empty() {
-            Some(Self::compute_level_root(&self.current_chunks, self.current_level_size))
+        // If there are chunks in current level (partial level), compute their root
+        let current_root = if self.current_level_chunks > 0 {
+            // Create a temporary hasher to replace the current one (since finish() takes ownership)
+            let temp_hasher = std::mem::replace(
+                &mut self.current_hasher,
+                MerkleHasher::with_leaves(1) // dummy value, won't be used
+            );
+            Some(temp_hasher.finish().map_err(|_| Error::MaximumLeavesExceeded {
+                max_leaves: self.max_leaves,
+            })?)
         } else {
             None
         };
@@ -202,6 +221,7 @@ impl ProgressiveMerkleHasher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::merkle_root;
 
     #[test]
     fn test_empty_tree() {
