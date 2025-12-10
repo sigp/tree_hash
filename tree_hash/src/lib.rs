@@ -93,6 +93,13 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
     Some(Hash256::from_slice(&root))
 }
 
+pub fn mix_in_active_fields(root: Hash256, active_fields: [u8; BYTES_PER_CHUNK]) -> Hash256 {
+    Hash256::from(ethereum_hashing::hash32_concat(
+        root.as_slice(),
+        &active_fields,
+    ))
+}
+
 /// Returns a cached padding node for a given height.
 fn get_zero_hash(height: usize) -> &'static [u8] {
     if height <= ZERO_HASHES_MAX_INDEX {

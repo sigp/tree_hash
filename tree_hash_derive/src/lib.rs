@@ -1,4 +1,7 @@
 #![recursion_limit = "256"]
+mod attrs;
+
+use crate::attrs::{EnumBehaviour, StructBehaviour, StructOpts};
 use darling::FromDeriveInput;
 use proc_macro::TokenStream;
 use quote::quote;
@@ -8,37 +11,6 @@ use syn::{parse_macro_input, DataEnum, DataStruct, DeriveInput, Ident};
 /// The highest possible union selector value (higher values are reserved for backwards compatible
 /// extensions).
 const MAX_UNION_SELECTOR: u8 = 127;
-
-#[derive(Debug, FromDeriveInput)]
-#[darling(attributes(tree_hash))]
-struct StructOpts {
-    #[darling(default)]
-    enum_behaviour: Option<String>,
-}
-
-const ENUM_TRANSPARENT: &str = "transparent";
-const ENUM_UNION: &str = "union";
-const ENUM_VARIANTS: &[&str] = &[ENUM_TRANSPARENT, ENUM_UNION];
-const NO_ENUM_BEHAVIOUR_ERROR: &str = "enums require an \"enum_behaviour\" attribute, \
-    e.g., #[tree_hash(enum_behaviour = \"transparent\")]";
-
-enum EnumBehaviour {
-    Transparent,
-    Union,
-}
-
-impl EnumBehaviour {
-    pub fn new(s: Option<String>) -> Option<Self> {
-        s.map(|s| match s.as_ref() {
-            ENUM_TRANSPARENT => EnumBehaviour::Transparent,
-            ENUM_UNION => EnumBehaviour::Union,
-            other => panic!(
-                "{} is an invalid enum_behaviour, use either {:?}",
-                other, ENUM_VARIANTS
-            ),
-        })
-    }
-}
 
 /// Return a Vec of `syn::Ident` for each named field in the struct, whilst filtering out fields
 /// that should not be hashed.
@@ -82,40 +54,73 @@ fn should_skip_hashing(field: &syn::Field) -> bool {
     })
 }
 
-/// Implements `tree_hash::TreeHash` for some `struct`.
+/// Implements `tree_hash::TreeHash` for a type.
 ///
 /// Fields are hashed in the order they are defined.
 #[proc_macro_derive(TreeHash, attributes(tree_hash))]
 pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as DeriveInput);
     let opts = StructOpts::from_derive_input(&item).unwrap();
-    let enum_opt = EnumBehaviour::new(opts.enum_behaviour);
+    let enum_opt = opts.enum_behaviour;
+    let struct_opt = opts.struct_behaviour;
 
-    match &item.data {
-        syn::Data::Struct(s) => {
+    match (&item.data, enum_opt, struct_opt) {
+        (syn::Data::Struct(s), enum_opt, struct_opt) => {
             if enum_opt.is_some() {
                 panic!("enum_behaviour is invalid for structs");
             }
-            tree_hash_derive_struct(&item, s)
+            let struct_behaviour = struct_opt.unwrap_or_default();
+            tree_hash_derive_struct(&item, s, struct_behaviour, opts.active_fields)
         }
-        syn::Data::Enum(s) => match enum_opt.expect(NO_ENUM_BEHAVIOUR_ERROR) {
-            EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
-            EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
-        },
-        _ => panic!("tree_hash_derive only supports structs and enums."),
+        (syn::Data::Enum(s), Some(enum_behaviour), struct_opt) => {
+            if struct_opt.is_some() {
+                panic!("struct_behaviour is invalid for enums");
+            }
+            match enum_behaviour {
+                EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
+                EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
+            }
+        }
+        _ => panic!("tree_hash_derive only supports structs and enums"),
     }
 }
 
-fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> TokenStream {
+fn tree_hash_derive_struct(
+    item: &DeriveInput,
+    struct_data: &DataStruct,
+    struct_behaviour: StructBehaviour,
+    active_fields_opt: Option<attrs::ActiveFields>,
+) -> TokenStream {
     let name = &item.ident;
     let (impl_generics, ty_generics, where_clause) = &item.generics.split_for_impl();
 
     let idents = get_hashable_fields(struct_data);
     let num_leaves = idents.len();
 
+    let hasher_type = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
+        quote! { tree_hash::ProgressiveMerkleHasher }
+    } else {
+        quote! { tree_hash::MerkleHasher }
+    };
+    let mixin_logic = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
+        let Some(active_fields) = active_fields_opt else {
+            panic!("active_fields must be provided for progressive_container");
+        };
+
+        let packed_active_fields = active_fields.packed_tokens();
+
+        quote! {
+            const ACTIVE_FIELDS: [u8; 32] = #packed_active_fields;
+            tree_hash::mix_in_active_fields(container_root, ACTIVE_FIELDS)
+        }
+    } else {
+        quote! { container_root }
+    };
+
     let output = quote! {
         impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
             fn tree_hash_type() -> tree_hash::TreeHashType {
+                // FIXME(sproul): consider adjusting this with active_fields
                 tree_hash::TreeHashType::Container
             }
 
@@ -128,14 +133,16 @@ fn tree_hash_derive_struct(item: &DeriveInput, struct_data: &DataStruct) -> Toke
             }
 
             fn tree_hash_root(&self) -> tree_hash::Hash256 {
-                let mut hasher = tree_hash::MerkleHasher::with_leaves(#num_leaves);
+                let mut hasher = #hasher_type::with_leaves(#num_leaves);
 
                 #(
                     hasher.write(self.#idents.tree_hash_root().as_slice())
                         .expect("tree hash derive should not apply too many leaves");
                 )*
 
-                hasher.finish().expect("tree hash derive should not have a remaining buffer")
+                let container_root = hasher.finish().expect("tree hash derive should not have a remaining buffer");
+
+                #mixin_logic
             }
         }
     };
