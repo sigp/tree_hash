@@ -1,6 +1,6 @@
 use super::*;
 use alloy_primitives::{Address, FixedBytes, U128, U256};
-use ssz::{Bitfield, Fixed, Variable};
+use ssz::{Bitfield, Fixed, Progressive, Variable};
 use std::sync::Arc;
 use typenum::Unsigned;
 
@@ -205,6 +205,31 @@ impl<N: Unsigned + Clone> TreeHash for Bitfield<Variable<N>> {
         // present).
         let root = bitfield_bytes_tree_hash_root::<N>(self.as_slice());
         mix_in_length(&root, self.len())
+    }
+}
+
+impl TreeHash for Bitfield<Progressive> {
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::List
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        unreachable!("ProgressiveBitField should never be packed.")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        unreachable!("ProgressiveBitField should never be packed.")
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        let mut hasher = ProgressiveMerkleHasher::new();
+        hasher
+            .write(self.as_slice())
+            .expect("ProgessiveBitList should not exceed tree hash leaf limit");
+
+        hasher
+            .finish()
+            .expect("ProgressiveBitList tree hash buffer should not exceed leaf limit")
     }
 }
 
