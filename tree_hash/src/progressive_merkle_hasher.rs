@@ -3,8 +3,7 @@ use ethereum_hashing::hash32_concat;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
-    /// The maximum number of leaves has been exceeded.
-    MaximumLeavesExceeded { max_leaves: usize },
+    MerkleHasher(crate::merkle_hasher::Error),
 }
 
 /// A progressive Merkle hasher that implements the semantics of `merkleize_progressive` as
@@ -50,27 +49,19 @@ pub struct ProgressiveMerkleHasher {
     current_level_chunks: usize,
     /// Buffer for bytes that haven't been completed into a chunk yet.
     buffer: Vec<u8>,
-    /// Maximum number of leaves this hasher can accept.
-    max_leaves: usize,
     /// Total number of chunks written so far.
     total_chunks: usize,
 }
 
 impl ProgressiveMerkleHasher {
-    /// Create a new progressive merkle hasher that can accept up to `max_leaves` leaves.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `max_leaves == 0`.
-    pub fn with_leaves(max_leaves: usize) -> Self {
-        assert!(max_leaves > 0, "must have at least one leaf");
+    /// Create a new progressive merkle hasher that can accept any number of chunks.
+    pub fn new() -> Self {
         Self {
             completed_roots: Vec::new(),
             current_hasher: MerkleHasher::with_leaves(1),
             current_level_size: 1,
             current_level_chunks: 0,
             buffer: Vec::new(),
-            max_leaves,
             total_chunks: 0,
         }
     }
@@ -90,12 +81,6 @@ impl ProgressiveMerkleHasher {
 
         // Process complete chunks from buffer
         while self.buffer.len() >= BYTES_PER_CHUNK {
-            if self.total_chunks >= self.max_leaves {
-                return Err(Error::MaximumLeavesExceeded {
-                    max_leaves: self.max_leaves,
-                });
-            }
-
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk.copy_from_slice(&self.buffer[..BYTES_PER_CHUNK]);
             self.buffer.drain(..BYTES_PER_CHUNK);
@@ -111,9 +96,7 @@ impl ProgressiveMerkleHasher {
         // Write the chunk to the current MerkleHasher
         self.current_hasher
             .write(&chunk)
-            .map_err(|_| Error::MaximumLeavesExceeded {
-                max_leaves: self.max_leaves,
-            })?;
+            .map_err(Error::MerkleHasher)?;
 
         self.current_level_chunks += 1;
         self.total_chunks += 1;
@@ -130,11 +113,7 @@ impl ProgressiveMerkleHasher {
             );
 
             // Finish the completed hasher to get the root
-            let root = completed_hasher
-                .finish()
-                .map_err(|_| Error::MaximumLeavesExceeded {
-                    max_leaves: self.max_leaves,
-                })?;
+            let root = completed_hasher.finish().map_err(Error::MerkleHasher)?;
 
             // Store this completed root
             self.completed_roots.push(root);
@@ -155,12 +134,6 @@ impl ProgressiveMerkleHasher {
     pub fn finish(mut self) -> Result<Hash256, Error> {
         // Process any remaining bytes in the buffer as a final chunk
         if !self.buffer.is_empty() {
-            if self.total_chunks >= self.max_leaves {
-                return Err(Error::MaximumLeavesExceeded {
-                    max_leaves: self.max_leaves,
-                });
-            }
-
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk[..self.buffer.len()].copy_from_slice(&self.buffer);
             self.process_chunk(chunk)?;
@@ -174,17 +147,12 @@ impl ProgressiveMerkleHasher {
         // If there are chunks in current level (partial level), compute their root
         let current_root = if self.current_level_chunks > 0 {
             // Create a temporary hasher to replace the current one (since finish() takes ownership)
+            // FIXME(sproul): get rid of this by making build_progressive_root a static method.
             let temp_hasher = std::mem::replace(
                 &mut self.current_hasher,
                 MerkleHasher::with_leaves(1), // dummy value, won't be used
             );
-            Some(
-                temp_hasher
-                    .finish()
-                    .map_err(|_| Error::MaximumLeavesExceeded {
-                        max_leaves: self.max_leaves,
-                    })?,
-            )
+            Some(temp_hasher.finish().map_err(Error::MerkleHasher)?)
         } else {
             None
         };
@@ -230,14 +198,14 @@ mod tests {
 
     #[test]
     fn test_empty_tree() {
-        let hasher = ProgressiveMerkleHasher::with_leaves(1);
+        let hasher = ProgressiveMerkleHasher::new();
         let root = hasher.finish().unwrap();
         assert_eq!(root, Hash256::ZERO);
     }
 
     #[test]
     fn test_single_chunk() {
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(1);
+        let mut hasher = ProgressiveMerkleHasher::new();
         let chunk = [1u8; BYTES_PER_CHUNK];
         hasher.write(&chunk).unwrap();
         let root = hasher.finish().unwrap();
@@ -254,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_two_chunks() {
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(5);
+        let mut hasher = ProgressiveMerkleHasher::new();
         let chunk1 = [1u8; BYTES_PER_CHUNK];
         let chunk2 = [2u8; BYTES_PER_CHUNK];
         hasher.write(&chunk1).unwrap();
@@ -282,20 +250,8 @@ mod tests {
     }
 
     #[test]
-    fn test_max_leaves_exceeded() {
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(2);
-        let chunk = [1u8; BYTES_PER_CHUNK];
-        hasher.write(&chunk).unwrap();
-        hasher.write(&chunk).unwrap();
-
-        // Third write should fail
-        let result = hasher.write(&chunk);
-        assert!(matches!(result, Err(Error::MaximumLeavesExceeded { .. })));
-    }
-
-    #[test]
     fn test_partial_chunk() {
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(1);
+        let mut hasher = ProgressiveMerkleHasher::new();
         let partial = vec![1u8, 2u8, 3u8];
         hasher.write(&partial).unwrap();
         let root = hasher.finish().unwrap();
@@ -315,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_multiple_writes() {
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher = ProgressiveMerkleHasher::new();
         hasher.write(&[1u8; 16]).unwrap();
         hasher.write(&[2u8; 16]).unwrap();
         hasher.write(&[3u8; 32]).unwrap();
@@ -326,17 +282,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "must have at least one leaf")]
-    fn test_zero_leaves_panics() {
-        ProgressiveMerkleHasher::with_leaves(0);
-    }
-
-    #[test]
     fn test_five_chunks() {
         // Test with 5 chunks as per the problem statement structure:
         // chunks[0] goes to right at level 1 (1 leaf)
         // chunks[1..5] go to left recursive call (4 leaves at level 2)
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(5);
+        let mut hasher = ProgressiveMerkleHasher::new();
         for i in 0..5 {
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk[0] = i as u8;
@@ -376,7 +326,7 @@ mod tests {
         // chunks[0] goes to right at level 1 (1 leaf)
         // chunks[1..5] go to right at level 2 (4 leaves)
         // chunks[5..21] go to right at level 3 (16 leaves)
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(21);
+        let mut hasher = ProgressiveMerkleHasher::new();
         for i in 0..21 {
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk[0] = i as u8;
@@ -395,7 +345,7 @@ mod tests {
         // chunks[1..5] at level 2 (4 leaves)
         // chunks[5..21] at level 3 (16 leaves)
         // chunks[21..85] at level 4 (64 leaves)
-        let mut hasher = ProgressiveMerkleHasher::with_leaves(85);
+        let mut hasher = ProgressiveMerkleHasher::new();
         for i in 0..85 {
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk[0] = (i % 256) as u8;
@@ -419,20 +369,20 @@ mod tests {
             .collect();
 
         // Write all chunks individually
-        let mut hasher1 = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher1 = ProgressiveMerkleHasher::new();
         for chunk in &chunks {
             hasher1.write(chunk).unwrap();
         }
         let root1 = hasher1.finish().unwrap();
 
         // Write all chunks at once
-        let mut hasher2 = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher2 = ProgressiveMerkleHasher::new();
         let all_bytes: Vec<u8> = chunks.iter().flat_map(|c| c.iter().copied()).collect();
         hasher2.write(&all_bytes).unwrap();
         let root2 = hasher2.finish().unwrap();
 
         // Write in groups
-        let mut hasher3 = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher3 = ProgressiveMerkleHasher::new();
         hasher3.write(&all_bytes[..3 * BYTES_PER_CHUNK]).unwrap();
         hasher3
             .write(&all_bytes[3 * BYTES_PER_CHUNK..7 * BYTES_PER_CHUNK])
@@ -450,12 +400,12 @@ mod tests {
         let data = vec![42u8; BYTES_PER_CHUNK * 3 + 10];
 
         // Write all at once
-        let mut hasher1 = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher1 = ProgressiveMerkleHasher::new();
         hasher1.write(&data).unwrap();
         let root1 = hasher1.finish().unwrap();
 
         // Write in smaller chunks
-        let mut hasher2 = ProgressiveMerkleHasher::with_leaves(10);
+        let mut hasher2 = ProgressiveMerkleHasher::new();
         hasher2.write(&data[0..50]).unwrap();
         hasher2.write(&data[50..]).unwrap();
         let root2 = hasher2.finish().unwrap();

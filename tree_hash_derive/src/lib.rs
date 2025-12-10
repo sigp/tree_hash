@@ -95,12 +95,12 @@ fn tree_hash_derive_struct(
     let (impl_generics, ty_generics, where_clause) = &item.generics.split_for_impl();
 
     let idents = get_hashable_fields(struct_data);
-    let num_leaves = idents.len();
 
-    let hasher_type = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
-        quote! { tree_hash::ProgressiveMerkleHasher }
+    let hasher_init = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
+        quote! { tree_hash::ProgressiveMerkleHasher::new() }
     } else {
-        quote! { tree_hash::MerkleHasher }
+        let num_leaves = idents.len();
+        quote! { tree_hash::MerkleHasher::with_leaves(#num_leaves) }
     };
     let mixin_logic = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
         let Some(active_fields) = active_fields_opt else {
@@ -133,7 +133,7 @@ fn tree_hash_derive_struct(
             }
 
             fn tree_hash_root(&self) -> tree_hash::Hash256 {
-                let mut hasher = #hasher_type::with_leaves(#num_leaves);
+                let mut hasher = #hasher_init;
 
                 #(
                     hasher.write(self.#idents.tree_hash_root().as_slice())
