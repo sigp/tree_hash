@@ -227,9 +227,10 @@ impl TreeHash for Bitfield<Progressive> {
             .write(self.as_slice())
             .expect("ProgessiveBitList should not exceed tree hash leaf limit");
 
-        hasher
+        let bitfield_root = hasher
             .finish()
-            .expect("ProgressiveBitList tree hash buffer should not exceed leaf limit")
+            .expect("ProgressiveBitList tree hash buffer should not exceed leaf limit");
+        mix_in_length(&bitfield_root, self.len())
     }
 }
 
