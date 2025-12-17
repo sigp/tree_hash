@@ -222,6 +222,12 @@ impl TreeHash for Bitfield<Progressive> {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
+        // FIXME(sproul): unclear if this is intended or a bug in the spec tests
+        // See: https://github.com/ethereum/consensus-specs/issues/4795
+        if self.is_empty() {
+            return mix_in_length(&Hash256::ZERO, 0);
+        }
+
         let mut hasher = ProgressiveMerkleHasher::new();
         hasher
             .write(self.as_slice())
