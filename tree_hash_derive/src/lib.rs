@@ -102,20 +102,52 @@ fn tree_hash_derive_struct(
         let num_leaves = idents.len();
         quote! { tree_hash::MerkleHasher::with_leaves(#num_leaves) }
     };
-    let mixin_logic = if let StructBehaviour::ProgressiveContainer = struct_behaviour {
-        let Some(active_fields) = active_fields_opt else {
-            panic!("active_fields must be provided for progressive_container");
+
+    // Compute the field hashes while accounting for inactive fields which hash as 0x0.
+    //
+    // The `mixin_logic` is the expression to mix in the `active_fields` in the case of a
+    // progressive container.
+    let (field_hashes, mixin_logic) =
+        if let StructBehaviour::ProgressiveContainer = struct_behaviour {
+            let Some(active_fields) = active_fields_opt else {
+                panic!("active_fields must be provided for progressive_container");
+            };
+
+            let mut active_field_index = 0;
+            let mut field_hashes: Vec<proc_macro2::TokenStream> = vec![];
+            for active in &active_fields.active_fields {
+                if *active {
+                    let Some(ident) = idents.get(active_field_index) else {
+                        panic!(
+                            "active_fields is inconsistent with struct fields. \
+                             index: {active_field_index}, hashable fields: {}",
+                            idents.len()
+                        )
+                    };
+                    active_field_index += 1;
+                    field_hashes.push(quote! { self.#ident.tree_hash_root() });
+                } else {
+                    field_hashes.push(quote! { tree_hash::Hash256::ZERO });
+                }
+            }
+
+            let packed_active_fields = active_fields.packed_tokens();
+
+            let mixin_logic = quote! {
+                const ACTIVE_FIELDS: [u8; 32] = #packed_active_fields;
+                tree_hash::mix_in_active_fields(container_root, ACTIVE_FIELDS)
+            };
+
+            (field_hashes, mixin_logic)
+        } else {
+            (
+                idents
+                    .into_iter()
+                    .map(|ident| quote! { self.#ident.tree_hash_root() })
+                    .collect(),
+                quote! { container_root },
+            )
         };
-
-        let packed_active_fields = active_fields.packed_tokens();
-
-        quote! {
-            const ACTIVE_FIELDS: [u8; 32] = #packed_active_fields;
-            tree_hash::mix_in_active_fields(container_root, ACTIVE_FIELDS)
-        }
-    } else {
-        quote! { container_root }
-    };
 
     let output = quote! {
         impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
@@ -136,7 +168,7 @@ fn tree_hash_derive_struct(
                 let mut hasher = #hasher_init;
 
                 #(
-                    hasher.write(self.#idents.tree_hash_root().as_slice())
+                    hasher.write(#field_hashes.as_slice())
                         .expect("tree hash derive should not apply too many leaves");
                 )*
 
