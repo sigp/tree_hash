@@ -1,12 +1,12 @@
 #![recursion_limit = "256"]
 mod attrs;
 
-use crate::attrs::{EnumBehaviour, StructBehaviour, StructOpts};
-use darling::FromDeriveInput;
+use crate::attrs::{EnumBehaviour, StructBehaviour, StructOpts, VariantOpts};
+use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use quote::quote;
 use std::convert::TryInto;
-use syn::{parse_macro_input, DataEnum, DataStruct, DeriveInput, Ident};
+use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Ident};
 
 /// The highest possible union selector value (higher values are reserved for backwards compatible
 /// extensions).
@@ -50,7 +50,7 @@ fn get_hashable_fields_and_their_caches(
 /// The field attribute is: `#[tree_hash(skip_hashing)]`
 fn should_skip_hashing(field: &syn::Field) -> bool {
     field.attrs.iter().any(|attr| {
-        attr.path().is_ident("tree_hash") && attr.parse_args::<Ident>().unwrap() == "skip_hashing"
+        is_tree_hash_attr(attr) && attr.parse_args::<Ident>().unwrap() == "skip_hashing"
     })
 }
 
@@ -78,7 +78,9 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
             }
             match enum_behaviour {
                 EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
-                EnumBehaviour::Union => tree_hash_derive_enum_union(&item, s),
+                EnumBehaviour::Union | EnumBehaviour::CompatibleUnion => {
+                    tree_hash_derive_enum_union(&item, s, enum_behaviour)
+                }
             }
         }
         _ => panic!("tree_hash_derive only supports structs and enums"),
@@ -259,18 +261,29 @@ fn tree_hash_derive_enum_transparent(
     output.into()
 }
 
-/// Derive `TreeHash` for an `enum` following the "union" SSZ spec.
+/// Derive `TreeHash` for an `enum` following the compatible union or ordinary union SSZ spec.
 ///
-/// The union selector will be determined based upon the order in which the enum variants are
-/// defined. E.g., the top-most variant in the enum will have a selector of `0`, the variant
-/// beneath it will have a selector of `1` and so on.
+/// The union selectors for a compatible union MUST be defined using the variant attribute:
+///
+/// - `tree_hash(selector = "X")`
+///
+/// The union selectors for an ordinary union will be determined based upon the order in which the
+/// enum variants are defined. E.g., the top-most variant in the enum will have a selector of `0`,
+/// the variant beneath it will have a selector of `1` and so on.
 ///
 /// # Limitations
 ///
 /// Only supports enums where each variant has a single field.
-fn tree_hash_derive_enum_union(derive_input: &DeriveInput, enum_data: &DataEnum) -> TokenStream {
+fn tree_hash_derive_enum_union(
+    derive_input: &DeriveInput,
+    enum_data: &DataEnum,
+    enum_behaviour: EnumBehaviour,
+) -> TokenStream {
     let name = &derive_input.ident;
     let (impl_generics, ty_generics, where_clause) = &derive_input.generics.split_for_impl();
+
+    // Parse variant-level configuration.
+    let variant_opts = parse_variant_opts(enum_data);
 
     let patterns: Vec<_> = enum_data
         .variants
@@ -288,7 +301,18 @@ fn tree_hash_derive_enum_union(derive_input: &DeriveInput, enum_data: &DataEnum)
         })
         .collect();
 
-    let union_selectors = compute_union_selectors(patterns.len());
+    let union_selectors = match enum_behaviour {
+        EnumBehaviour::CompatibleUnion => get_compatible_union_selectors(enum_data, &variant_opts),
+        EnumBehaviour::Union => {
+            // For now we don't allow selectors in ordinary unions to be set manually.
+            assert!(
+                variant_opts.iter().all(|opt| opt.selector.is_none()),
+                "specifying the selector in a regular union is not supported"
+            );
+            compute_union_selectors(patterns.len())
+        }
+        EnumBehaviour::Transparent => unreachable!("union code called for transparent enum"),
+    };
 
     let output = quote! {
         impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
@@ -321,6 +345,41 @@ fn tree_hash_derive_enum_union(derive_input: &DeriveInput, enum_data: &DataEnum)
     output.into()
 }
 
+fn parse_variant_opts(enum_data: &DataEnum) -> Vec<VariantOpts> {
+    enum_data
+        .variants
+        .iter()
+        .map(|variant| {
+            let tree_hash_attrs = variant
+                .attrs
+                .iter()
+                .filter(|attr| is_tree_hash_attr(attr))
+                .collect::<Vec<_>>();
+
+            if tree_hash_attrs.len() > 1 {
+                panic!("more than one variant-level \"tree_hash\" attribute provided");
+            }
+
+            tree_hash_attrs
+                .first()
+                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+/// Predicate for determining whether an attribute is a `tree_hash` attribute.
+fn is_tree_hash_attr(attr: &Attribute) -> bool {
+    is_attr_with_ident(attr, "tree_hash")
+}
+
+/// Predicate for determining whether an attribute has the given `ident` as its path.
+fn is_attr_with_ident(attr: &Attribute, ident: &str) -> bool {
+    attr.path()
+        .get_ident()
+        .is_some_and(|attr_ident| *attr_ident == ident)
+}
+
 fn compute_union_selectors(num_variants: usize) -> Vec<u8> {
     let union_selectors = (0..num_variants)
         .map(|i| {
@@ -342,4 +401,25 @@ fn compute_union_selectors(num_variants: usize) -> Vec<u8> {
     );
 
     union_selectors
+}
+
+fn get_compatible_union_selectors(enum_data: &DataEnum, variant_opts: &[VariantOpts]) -> Vec<u8> {
+    enum_data
+        .variants
+        .iter()
+        .zip(variant_opts.iter())
+        .map(|(variant, variant_opt)| {
+            let variant_name = &variant.ident;
+            let Some(selector) = variant_opt.selector else {
+                panic!("you must define a selector for variant \"{variant_name}\"");
+            };
+            if selector == 0 || selector > MAX_UNION_SELECTOR {
+                panic!(
+                    "selector = {selector} for variant \"{variant_name}\" is illegal in a \
+                     compatible union"
+                );
+            }
+            selector
+        })
+        .collect()
 }

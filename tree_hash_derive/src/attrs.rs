@@ -15,10 +15,18 @@ pub struct StructOpts {
     pub active_fields: Option<ActiveFields>,
 }
 
+/// Variant-level configuration (for enums).
+#[derive(Debug, Default, FromMeta)]
+pub struct VariantOpts {
+    #[darling(default)]
+    pub selector: Option<u8>,
+}
+
 #[derive(Debug, FromMeta)]
 pub enum EnumBehaviour {
     Transparent,
     Union,
+    CompatibleUnion,
 }
 
 #[derive(Debug, Default, FromMeta)]
