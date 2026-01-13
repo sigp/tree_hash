@@ -154,7 +154,10 @@ fn tree_hash_derive_struct(
     let output = quote! {
         impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
             fn tree_hash_type() -> tree_hash::TreeHashType {
-                // FIXME(sproul): consider adjusting this with active_fields
+                // There is no specific type for progressive containers, although we could consider
+                // adding one in future if it would prove useful.
+                //
+                // See: https://github.com/sigp/tree_hash/issues/44
                 tree_hash::TreeHashType::Container
             }
 
