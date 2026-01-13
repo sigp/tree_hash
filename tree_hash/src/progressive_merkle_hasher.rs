@@ -146,13 +146,7 @@ impl ProgressiveMerkleHasher {
 
         // If there are chunks in current level (partial level), compute their root
         let current_root = if self.current_level_chunks > 0 {
-            // Create a temporary hasher to replace the current one (since finish() takes ownership)
-            // FIXME(sproul): get rid of this by making build_progressive_root a static method.
-            let temp_hasher = std::mem::replace(
-                &mut self.current_hasher,
-                MerkleHasher::with_leaves(1), // dummy value, won't be used
-            );
-            Some(temp_hasher.finish().map_err(Error::MerkleHasher)?)
+            Some(self.current_hasher.finish().map_err(Error::MerkleHasher)?)
         } else {
             None
         };
@@ -160,14 +154,20 @@ impl ProgressiveMerkleHasher {
         // Build the progressive tree from completed roots and current root
         // completed_roots are in order: [smallest level, ..., largest level]
         // We need to build from right to left in the tree
-        Ok(self.build_progressive_root(current_root))
+        Ok(Self::build_progressive_root(
+            current_root,
+            self.completed_roots,
+        ))
     }
 
     /// Build the final progressive merkle root by combining completed subtree roots.
     ///
     /// The progressive tree structure: at each node, hash(left=deeper_levels, right=this_level).
     /// This builds the tree from the largest (leftmost) level backwards to the smallest (rightmost).
-    fn build_progressive_root(&self, current_root: Option<Hash256>) -> Hash256 {
+    fn build_progressive_root(
+        current_root: Option<Hash256>,
+        completed_roots: Vec<Hash256>,
+    ) -> Hash256 {
         // Start from the leftmost (largest/deepest) level
         // Per EIP-7916 spec, even partial levels follow the progressive structure:
         // merkleize_progressive(chunks, n) = hash(merkleize_progressive(chunks[n:], n*4), merkleize(chunks[:n], n))
@@ -182,7 +182,7 @@ impl ProgressiveMerkleHasher {
         // At each step: result = hash(result, completed_root)
         // - result accumulates the left subtree (deeper/larger levels)
         // - completed_root is the right subtree at this level
-        for &completed_root in self.completed_roots.iter().rev() {
+        for &completed_root in completed_roots.iter().rev() {
             result =
                 Hash256::from_slice(&hash32_concat(result.as_slice(), completed_root.as_slice()));
         }
