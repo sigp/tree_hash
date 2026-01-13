@@ -222,8 +222,12 @@ impl TreeHash for Bitfield<Progressive> {
     }
 
     fn tree_hash_root(&self) -> Hash256 {
-        // FIXME(sproul): unclear if this is intended or a bug in the spec tests
-        // See: https://github.com/ethereum/consensus-specs/issues/4795
+        // XXX: This is a workaround for the fact that the internal representation of bitfields is
+        // misaligned with the spec.
+        //
+        // See:
+        //
+        // - https://github.com/sigp/ethereum_ssz/pull/68
         if self.is_empty() {
             return mix_in_length(&Hash256::ZERO, 0);
         }
