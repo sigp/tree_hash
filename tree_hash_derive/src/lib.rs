@@ -355,15 +355,39 @@ fn parse_variant_opts(enum_data: &DataEnum) -> Vec<VariantOpts> {
                 .iter()
                 .filter(|attr| is_tree_hash_attr(attr))
                 .collect::<Vec<_>>();
+            let ssz_attrs = variant
+                .attrs
+                .iter()
+                .filter(|attr| is_ssz_attr(attr))
+                .collect::<Vec<_>>();
 
+            // Check for duplicate `tree_hash` attributes.
+            // Checking duplicate `ssz` attributes is the job of the `ssz_derive` macro.
             if tree_hash_attrs.len() > 1 {
                 panic!("more than one variant-level \"tree_hash\" attribute provided");
             }
 
-            tree_hash_attrs
+            let tree_hash_opts = tree_hash_attrs
                 .first()
-                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap())
-                .unwrap_or_default()
+                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap());
+
+            let ssz_opts = ssz_attrs
+                .first()
+                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap());
+
+            // Check consistency with SSZ opts, or fall back to SSZ attribute if tree_hash attribute
+            // is absent.
+            match (tree_hash_opts, ssz_opts) {
+                (Some(tree_hash), Some(ssz)) => {
+                    assert_eq!(
+                        tree_hash, ssz,
+                        "inconsistent \"tree_hash\" and \"ssz\" attributes"
+                    );
+                    tree_hash
+                }
+                (Some(attr), None) | (None, Some(attr)) => attr,
+                (None, None) => VariantOpts::default(),
+            }
         })
         .collect()
 }
@@ -371,6 +395,10 @@ fn parse_variant_opts(enum_data: &DataEnum) -> Vec<VariantOpts> {
 /// Predicate for determining whether an attribute is a `tree_hash` attribute.
 fn is_tree_hash_attr(attr: &Attribute) -> bool {
     is_attr_with_ident(attr, "tree_hash")
+}
+
+fn is_ssz_attr(attr: &Attribute) -> bool {
+    is_attr_with_ident(attr, "ssz")
 }
 
 /// Predicate for determining whether an attribute has the given `ident` as its path.

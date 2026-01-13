@@ -16,7 +16,11 @@ pub struct StructOpts {
 }
 
 /// Variant-level configuration (for enums).
-#[derive(Debug, Default, FromMeta)]
+///
+/// These attributes NEED to be kept in sync with `ethereum_ssz` because both crates try to read
+/// each others attributes to avoid mandatory duplication. In future this might mean parsing some
+/// SSZ-only attributes here and then ignoring them.
+#[derive(Debug, Default, PartialEq, FromMeta)]
 pub struct VariantOpts {
     #[darling(default)]
     pub selector: Option<u8>,
