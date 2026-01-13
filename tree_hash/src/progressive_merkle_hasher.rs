@@ -183,8 +183,7 @@ impl ProgressiveMerkleHasher {
         // - result accumulates the left subtree (deeper/larger levels)
         // - completed_root is the right subtree at this level
         for &completed_root in completed_roots.iter().rev() {
-            result =
-                Hash256::from_slice(&hash32_concat(result.as_slice(), completed_root.as_slice()));
+            result = Hash256::from(hash32_concat(result.as_slice(), completed_root.as_slice()));
         }
 
         result
