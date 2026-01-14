@@ -11,11 +11,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-alloy-primitives = "1.0.0"
-ethereum_hashing = { version = "0.8.0", default-features = false, features = ["zero_hash_cache"]  }
-ethereum_ssz = "0.10.0"
-smallvec = "1.6.1"
-typenum = "1.12.0"
+alloy-primitives = "1"
+ethereum_hashing = { version = "0.8", default-features = false, features = ["zero_hash_cache"]  }
+ethereum_ssz = "0.10"
+smallvec = "1"
+typenum = "1"
 
 [dev-dependencies]
 rand = "0.9"
