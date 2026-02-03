@@ -10,23 +10,23 @@ pub enum Error {
 /// defined in EIP-7916.
 ///
 /// The progressive merkle tree has a unique structure where:
-/// - At each level, the right child is a binary merkle tree with a specific number of leaves
-/// - The left child recursively contains more progressive structure
-/// - The number of leaves in each right subtree grows by 4x at each level (1, 4, 16, 64, ...)
+/// - At each level, the left child is a binary merkle tree with a specific number of leaves
+/// - The right child recursively contains more progressive structure
+/// - The number of leaves in each left subtree grows by 4x at each level (1, 4, 16, 64, ...)
 ///
 /// # Example Tree Structure
 ///
 /// ```text
-///         root
-///          /\
-///         /  \
-///        /\   1: chunks[0 ..< 1]
-///       /  \
-///      /\   4: chunks[1 ..< 5]
-///     /  \
-///    /\  16: chunks[5 ..< 21]
-///   /  \
-///  0   64: chunks[21 ..< 85]
+///                    root
+///                     /\
+///                    /  \
+///  1: chunks[0 ..< 1]   /\
+///                      /  \
+///    4: chunks[1 ..< 5]   /\
+///                        /  \
+///    16: chunks[5 ..< 21]   /\
+///                          /  \
+///     64: chunks[21 ..< 85]    0
 /// ```
 ///
 /// This structure allows efficient appending and proof generation for growing lists.
@@ -153,7 +153,7 @@ impl ProgressiveMerkleHasher {
 
         // Build the progressive tree from completed roots and current root
         // completed_roots are in order: [smallest level, ..., largest level]
-        // We need to build from right to left in the tree
+        // We need to build from left to right in the tree
         Ok(Self::build_progressive_root(
             current_root,
             self.completed_roots,
@@ -162,28 +162,28 @@ impl ProgressiveMerkleHasher {
 
     /// Build the final progressive merkle root by combining completed subtree roots.
     ///
-    /// The progressive tree structure: at each node, hash(left=deeper_levels, right=this_level).
-    /// This builds the tree from the largest (leftmost) level backwards to the smallest (rightmost).
+    /// The progressive tree structure: at each node, hash(left=this_level, right=deeper_levels).
+    /// This builds the tree from the largest (rightmost) level backwards to the smallest (leftmost).
     fn build_progressive_root(
         current_root: Option<Hash256>,
         completed_roots: Vec<Hash256>,
     ) -> Hash256 {
-        // Start from the leftmost (largest/deepest) level
+        // Start from the rightmost (largest/deepest) level
         // Per EIP-7916 spec, even partial levels follow the progressive structure:
-        // merkleize_progressive(chunks, n) = hash(merkleize_progressive(chunks[n:], n*4), merkleize(chunks[:n], n))
-        // So a partial level with k chunks becomes: hash(ZERO (no further chunks), merkleize(chunks, n))
+        // merkleize_progressive(chunks, n) = hash(merkleize(chunks[:n], n), merkleize_progressive(chunks[n:], n*4))
+        // So a partial level with k chunks becomes: hash(merkleize(chunks, n), ZERO (no further chunks))
         let mut result = if let Some(curr) = current_root {
-            Hash256::from_slice(&hash32_concat(Hash256::ZERO.as_slice(), curr.as_slice()))
+            Hash256::from_slice(&hash32_concat(curr.as_slice(), Hash256::ZERO.as_slice()))
         } else {
             Hash256::ZERO
         };
 
         // Process completed roots from largest to smallest (reverse order)
-        // At each step: result = hash(result, completed_root)
-        // - result accumulates the left subtree (deeper/larger levels)
-        // - completed_root is the right subtree at this level
+        // At each step: result = hash(completed_root, result)
+        // - completed_root is the left subtree at this level (binary tree)
+        // - result accumulates the right subtree (deeper/larger levels)
         for &completed_root in completed_roots.iter().rev() {
-            result = Hash256::from(hash32_concat(result.as_slice(), completed_root.as_slice()));
+            result = Hash256::from(hash32_concat(completed_root.as_slice(), result.as_slice()));
         }
 
         result
@@ -210,11 +210,11 @@ mod tests {
         let root = hasher.finish().unwrap();
 
         // For a single chunk, the progressive tree should be:
-        // hash(merkleize_progressive([], 4), merkleize([chunk], 1))
-        // = hash(zero_hash, chunk)
-        let zero_left = Hash256::ZERO;
-        let right = Hash256::from_slice(&chunk);
-        let expected = Hash256::from_slice(&hash32_concat(zero_left.as_slice(), right.as_slice()));
+        // hash(merkleize([chunk], 1), merkleize_progressive([], 4))
+        // = hash(chunk, zero_hash)
+        let left = Hash256::from_slice(&chunk);
+        let zero_right = Hash256::ZERO;
+        let expected = Hash256::from_slice(&hash32_concat(left.as_slice(), zero_right.as_slice()));
 
         assert_eq!(root, expected);
     }
@@ -228,20 +228,20 @@ mod tests {
         hasher.write(&chunk2).unwrap();
         let root = hasher.finish().unwrap();
 
-        // First chunk goes to right (num_leaves=1)
-        // Second chunk goes to left recursive call (num_leaves=4)
+        // First chunk goes to left (num_leaves=1)
+        // Second chunk goes to right recursive call (num_leaves=4)
 
-        // Right: binary tree with 1 leaf = chunk1
-        let right = Hash256::from_slice(&chunk1);
+        // Left: binary tree with 1 leaf = chunk1
+        let left = Hash256::from_slice(&chunk1);
 
-        // Left: progressive tree with chunk2 at num_leaves=4
-        // At this level: hash(merkleize_progressive([], 16), merkleize([chunk2], 4))
-        // = hash(zero_hash, merkle([chunk2], 4))
+        // Right: progressive tree with chunk2 at num_leaves=4
+        // At this level: hash(merkleize([chunk2], 4), merkleize_progressive([], 16))
+        // = hash(merkle([chunk2], 4), zero_hash)
         let chunk2_padded = merkle_root(&chunk2, 4);
-        let zero_left_inner = Hash256::ZERO;
-        let left = Hash256::from_slice(&hash32_concat(
-            zero_left_inner.as_slice(),
+        let zero_right_inner = Hash256::ZERO;
+        let right = Hash256::from_slice(&hash32_concat(
             chunk2_padded.as_slice(),
+            zero_right_inner.as_slice(),
         ));
 
         let expected = Hash256::from_slice(&hash32_concat(left.as_slice(), right.as_slice()));
@@ -261,9 +261,9 @@ mod tests {
         chunk[1] = 2;
         chunk[2] = 3;
 
-        let zero_left = Hash256::ZERO;
-        let right = Hash256::from_slice(&chunk);
-        let expected = Hash256::from_slice(&hash32_concat(zero_left.as_slice(), right.as_slice()));
+        let left = Hash256::from_slice(&chunk);
+        let zero_right = Hash256::ZERO;
+        let expected = Hash256::from_slice(&hash32_concat(left.as_slice(), zero_right.as_slice()));
 
         assert_eq!(root, expected);
     }
@@ -283,8 +283,8 @@ mod tests {
     #[test]
     fn test_five_chunks() {
         // Test with 5 chunks as per the problem statement structure:
-        // chunks[0] goes to right at level 1 (1 leaf)
-        // chunks[1..5] go to left recursive call (4 leaves at level 2)
+        // chunks[0] goes to left at level 1 (1 leaf)
+        // chunks[1..5] go to right recursive call (4 leaves at level 2)
         let mut hasher = ProgressiveMerkleHasher::new();
         for i in 0..5 {
             let mut chunk = [0u8; BYTES_PER_CHUNK];
@@ -294,13 +294,13 @@ mod tests {
         let root = hasher.finish().unwrap();
 
         // Manually compute expected root:
-        // Right: chunks[0]
+        // Left: chunks[0]
         let mut chunk0 = [0u8; BYTES_PER_CHUNK];
         chunk0[0] = 0;
-        let right = Hash256::from_slice(&chunk0);
+        let left = Hash256::from_slice(&chunk0);
 
-        // Left: merkleize_progressive(chunks[1..5], 4)
-        // Which is: hash(merkleize_progressive([], 16), merkleize(chunks[1..5], 4))
+        // Right: merkleize_progressive(chunks[1..5], 4)
+        // Which is: hash(merkleize(chunks[1..5], 4), merkleize_progressive([], 16))
         let chunks_1_to_4: Vec<u8> = (1..5)
             .flat_map(|i| {
                 let mut chunk = [0u8; BYTES_PER_CHUNK];
@@ -308,9 +308,9 @@ mod tests {
                 chunk
             })
             .collect();
-        let right_inner = merkle_root(&chunks_1_to_4, 4);
-        let left_inner = Hash256::ZERO;
-        let left = Hash256::from_slice(&hash32_concat(
+        let left_inner = merkle_root(&chunks_1_to_4, 4);
+        let right_inner = Hash256::ZERO;
+        let right = Hash256::from_slice(&hash32_concat(
             left_inner.as_slice(),
             right_inner.as_slice(),
         ));
@@ -322,9 +322,9 @@ mod tests {
     #[test]
     fn test_21_chunks() {
         // Test with 21 chunks as per problem statement:
-        // chunks[0] goes to right at level 1 (1 leaf)
-        // chunks[1..5] go to right at level 2 (4 leaves)
-        // chunks[5..21] go to right at level 3 (16 leaves)
+        // chunks[0] goes to left at level 1 (1 leaf)
+        // chunks[1..5] go to left at level 2 (4 leaves)
+        // chunks[5..21] go to left at level 3 (16 leaves)
         let mut hasher = ProgressiveMerkleHasher::new();
         for i in 0..21 {
             let mut chunk = [0u8; BYTES_PER_CHUNK];

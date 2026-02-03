@@ -180,7 +180,7 @@ fn progressive_container_one_field() {
     let container = ProgressiveContainerOneField { x: 125 };
     assert_eq!(
         container.tree_hash_root(),
-        Hash256::from_str("0xfacc8073916cbe1d3e400f69945fb5b6423d1e8f99be04713bcbe254fad2c94c")
+        Hash256::from_str("0xb6a2f148c33179dec1bdaa979a11776ff2d881fca93974b286443a8539dc0872")
             .unwrap()
     );
 }
