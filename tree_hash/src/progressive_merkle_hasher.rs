@@ -190,6 +190,12 @@ impl ProgressiveMerkleHasher {
     }
 }
 
+impl Default for ProgressiveMerkleHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

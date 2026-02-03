@@ -67,7 +67,7 @@ impl FromMeta for ActiveFields {
 impl ActiveFields {
     fn new(active_fields: Vec<bool>) -> Result<Self, Error> {
         if active_fields.is_empty() {
-            return Err(Error::custom(format!("active_fields must be non-empty")));
+            return Err(Error::custom("active_fields must be non-empty".to_string()));
         }
         if active_fields.len() > MAX_ACTIVE_FIELDS {
             return Err(Error::custom(format!(
@@ -76,9 +76,9 @@ impl ActiveFields {
         }
 
         if let Some(false) = active_fields.last() {
-            return Err(Error::custom(format!(
-                "the last entry of active_fields must not be 0"
-            )));
+            return Err(Error::custom(
+                "the last entry of active_fields must not be 0".to_string(),
+            ));
         }
 
         Ok(Self { active_fields })
