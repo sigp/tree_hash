@@ -2,10 +2,14 @@ pub mod impls;
 mod merkle_hasher;
 mod merkleize_padded;
 mod merkleize_standard;
+mod progressive_merkle_hasher;
 
 pub use merkle_hasher::{Error, MerkleHasher};
 pub use merkleize_padded::merkleize_padded;
 pub use merkleize_standard::merkleize_standard;
+pub use progressive_merkle_hasher::{
+    Error as ProgressiveMerkleHasherError, ProgressiveMerkleHasher,
+};
 
 use ethereum_hashing::{hash_fixed, ZERO_HASHES, ZERO_HASHES_MAX_INDEX};
 use smallvec::SmallVec;
@@ -87,6 +91,13 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
 
     let root = ethereum_hashing::hash32_concat(root.as_slice(), &chunk);
     Some(Hash256::from_slice(&root))
+}
+
+pub fn mix_in_active_fields(root: Hash256, active_fields: [u8; BYTES_PER_CHUNK]) -> Hash256 {
+    Hash256::from(ethereum_hashing::hash32_concat(
+        root.as_slice(),
+        &active_fields,
+    ))
 }
 
 /// Returns a cached padding node for a given height.

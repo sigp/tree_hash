@@ -1,5 +1,6 @@
 use alloy_primitives::{Address, U128, U160, U256};
 use ssz_derive::Encode;
+use std::str::FromStr;
 use tree_hash::{Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
 use tree_hash_derive::TreeHash;
 
@@ -166,4 +167,20 @@ fn packed_encoding_example() {
             "encoding {i} is wrong"
         );
     }
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1))]
+struct ProgressiveContainerOneField {
+    x: u8,
+}
+
+#[test]
+fn progressive_container_one_field() {
+    let container = ProgressiveContainerOneField { x: 125 };
+    assert_eq!(
+        container.tree_hash_root(),
+        Hash256::from_str("0xb6a2f148c33179dec1bdaa979a11776ff2d881fca93974b286443a8539dc0872")
+            .unwrap()
+    );
 }
