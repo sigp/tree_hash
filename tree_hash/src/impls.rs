@@ -235,7 +235,7 @@ impl TreeHash for Bitfield<Progressive> {
         let mut hasher = ProgressiveMerkleHasher::new();
         hasher
             .write(self.as_slice())
-            .expect("ProgessiveBitList should not exceed tree hash leaf limit");
+            .expect("ProgressiveBitList should not exceed tree hash leaf limit");
 
         let bitfield_root = hasher
             .finish()
