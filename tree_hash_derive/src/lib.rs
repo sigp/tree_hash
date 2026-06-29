@@ -5,6 +5,7 @@ use crate::attrs::{EnumBehaviour, StructBehaviour, StructOpts, VariantOpts};
 use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use quote::quote;
+use std::collections::HashSet;
 use std::convert::TryInto;
 use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Ident};
 
@@ -50,7 +51,10 @@ fn get_hashable_fields_and_their_caches(
 /// The field attribute is: `#[tree_hash(skip_hashing)]`
 fn should_skip_hashing(field: &syn::Field) -> bool {
     field.attrs.iter().any(|attr| {
-        is_tree_hash_attr(attr) && attr.parse_args::<Ident>().unwrap() == "skip_hashing"
+        is_tree_hash_attr(attr)
+            && attr
+                .parse_args::<Ident>()
+                .is_ok_and(|ident| ident == "skip_hashing")
     })
 }
 
@@ -75,6 +79,9 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
         (syn::Data::Enum(s), Some(enum_behaviour), struct_opt) => {
             if struct_opt.is_some() {
                 panic!("struct_behaviour is invalid for enums");
+            }
+            if opts.active_fields.is_some() {
+                panic!("active_fields is invalid for enums");
             }
             match enum_behaviour {
                 EnumBehaviour::Transparent => tree_hash_derive_enum_transparent(&item, s),
@@ -109,47 +116,70 @@ fn tree_hash_derive_struct(
     //
     // The `mixin_logic` is the expression to mix in the `active_fields` in the case of a
     // progressive container.
-    let (field_hashes, mixin_logic) =
-        if let StructBehaviour::ProgressiveContainer = struct_behaviour {
-            let Some(active_fields) = active_fields_opt else {
-                panic!("active_fields must be provided for progressive_container");
-            };
-
-            let mut active_field_index = 0;
-            let mut field_hashes: Vec<proc_macro2::TokenStream> = vec![];
-            for active in &active_fields.active_fields {
-                if *active {
-                    let Some(ident) = idents.get(active_field_index) else {
-                        panic!(
-                            "active_fields is inconsistent with struct fields. \
-                             index: {active_field_index}, hashable fields: {}",
-                            idents.len()
-                        )
-                    };
-                    active_field_index += 1;
-                    field_hashes.push(quote! { self.#ident.tree_hash_root() });
-                } else {
-                    field_hashes.push(quote! { tree_hash::Hash256::ZERO });
-                }
-            }
-
-            let packed_active_fields = active_fields.packed_tokens();
-
-            let mixin_logic = quote! {
-                const ACTIVE_FIELDS: [u8; 32] = #packed_active_fields;
-                tree_hash::mix_in_active_fields(container_root, ACTIVE_FIELDS)
-            };
-
-            (field_hashes, mixin_logic)
-        } else {
-            (
-                idents
-                    .into_iter()
-                    .map(|ident| quote! { self.#ident.tree_hash_root() })
-                    .collect(),
-                quote! { container_root },
-            )
+    let (field_hashes, mixin_logic) = if let StructBehaviour::ProgressiveContainer =
+        struct_behaviour
+    {
+        let Some(active_fields) = active_fields_opt else {
+            panic!("active_fields must be provided for progressive_container");
         };
+
+        // Map each `active_fields` entry to a leaf: an active entry consumes the next hashable
+        // struct field (fields marked `#[tree_hash(skip_hashing)]` are already excluded from
+        // `idents`), while an inactive entry contributes a zero leaf so that chunk positions
+        // (and therefore gindices) stay stable.
+        let mut active_field_index = 0;
+        let mut field_hashes: Vec<proc_macro2::TokenStream> = vec![];
+        for active in &active_fields.active_fields {
+            if *active {
+                let Some(ident) = idents.get(active_field_index) else {
+                    panic!(
+                        "active_fields is inconsistent with struct fields. \
+                             index: {active_field_index}, hashable fields: {}",
+                        idents.len()
+                    )
+                };
+                active_field_index += 1;
+                field_hashes.push(quote! { self.#ident.tree_hash_root() });
+            } else {
+                field_hashes.push(quote! { tree_hash::Hash256::ZERO });
+            }
+        }
+
+        // Every hashable field must be claimed by an active entry. Without this check an
+        // under-specified `active_fields` would silently drop trailing fields from the hash.
+        // (The over-specified case is already caught above by `idents.get(..)` returning
+        // `None`.)
+        assert_eq!(
+            active_field_index,
+            idents.len(),
+            "active_fields has {active_field_index} active entries but the struct has {} \
+                 hashable fields (fields marked #[tree_hash(skip_hashing)] are not counted)",
+            idents.len()
+        );
+
+        let packed_active_fields = active_fields.packed_tokens();
+        let active_fields_len = attrs::ACTIVE_FIELDS_PACKED_BYTES_LEN;
+
+        let mixin_logic = quote! {
+            const ACTIVE_FIELDS: [u8; #active_fields_len] = #packed_active_fields;
+            // The packed active_fields must occupy exactly one chunk for `mix_in_active_fields`.
+            const _: () = assert!(#active_fields_len == tree_hash::BYTES_PER_CHUNK);
+            tree_hash::mix_in_active_fields(&container_root, ACTIVE_FIELDS)
+        };
+
+        (field_hashes, mixin_logic)
+    } else {
+        if active_fields_opt.is_some() {
+            panic!("active_fields is only valid with struct_behaviour = \"progressive_container\"");
+        }
+        (
+            idents
+                .into_iter()
+                .map(|ident| quote! { self.#ident.tree_hash_root() })
+                .collect(),
+            quote! { container_root },
+        )
+    };
 
     let output = quote! {
         impl #impl_generics tree_hash::TreeHash for #name #ty_generics #where_clause {
@@ -370,13 +400,18 @@ fn parse_variant_opts(enum_data: &DataEnum) -> Vec<VariantOpts> {
                 panic!("more than one variant-level \"tree_hash\" attribute provided");
             }
 
-            let tree_hash_opts = tree_hash_attrs
-                .first()
-                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap());
+            let variant_name = &variant.ident;
+            let parse_opts = |meta: &syn::Meta| {
+                VariantOpts::from_meta(meta).unwrap_or_else(|e| {
+                    panic!(
+                        "failed to parse variant attribute for \"{variant_name}\": {e}; \
+                         note that `selector` must be an integer in 1..={MAX_UNION_SELECTOR}"
+                    )
+                })
+            };
 
-            let ssz_opts = ssz_attrs
-                .first()
-                .map(|attr| VariantOpts::from_meta(&attr.meta).unwrap());
+            let tree_hash_opts = tree_hash_attrs.first().map(|attr| parse_opts(&attr.meta));
+            let ssz_opts = ssz_attrs.first().map(|attr| parse_opts(&attr.meta));
 
             // Check consistency with SSZ opts, or fall back to SSZ attribute if tree_hash attribute
             // is absent.
@@ -435,6 +470,7 @@ fn compute_union_selectors(num_variants: usize) -> Vec<u8> {
 }
 
 fn get_compatible_union_selectors(enum_data: &DataEnum, variant_opts: &[VariantOpts]) -> Vec<u8> {
+    let mut seen_selectors = HashSet::new();
     enum_data
         .variants
         .iter()
@@ -448,6 +484,11 @@ fn get_compatible_union_selectors(enum_data: &DataEnum, variant_opts: &[VariantO
                 panic!(
                     "selector = {selector} for variant \"{variant_name}\" is illegal in a \
                      compatible union"
+                );
+            }
+            if !seen_selectors.insert(selector) {
+                panic!(
+                    "selector = {selector} for variant \"{variant_name}\" is used more than once"
                 );
             }
             selector

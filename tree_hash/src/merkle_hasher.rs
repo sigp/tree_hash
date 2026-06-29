@@ -11,6 +11,19 @@ pub enum Error {
     MaximumLeavesExceeded { max_leaves: usize },
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::MaximumLeavesExceeded { max_leaves } => write!(
+                f,
+                "the maximum number of leaves ({max_leaves}) has been exceeded"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
 /// Helper struct to store either a hash digest or a slice.
 ///
 /// Should be used as a left or right value for some node.

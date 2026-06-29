@@ -214,16 +214,18 @@ impl TreeHash for Bitfield<Progressive> {
     }
 
     fn tree_hash_packed_encoding(&self) -> PackedEncoding {
-        unreachable!("ProgressiveBitField should never be packed.")
+        unreachable!("ProgressiveBitList should never be packed.")
     }
 
     fn tree_hash_packing_factor() -> usize {
-        unreachable!("ProgressiveBitField should never be packed.")
+        unreachable!("ProgressiveBitList should never be packed.")
     }
 
     fn tree_hash_root(&self) -> Hash256 {
         // XXX: This is a workaround for the fact that the internal representation of bitfields is
-        // misaligned with the spec.
+        // misaligned with the spec. An empty bitlist still stores a single zero byte (see
+        // `bytes_for_bit_len`), which would otherwise be hashed as a (non-zero) zero chunk rather
+        // than yielding the empty `merkleize_progressive([]) == Bytes32()` root.
         //
         // See:
         //
@@ -235,11 +237,11 @@ impl TreeHash for Bitfield<Progressive> {
         let mut hasher = ProgressiveMerkleHasher::new();
         hasher
             .write(self.as_slice())
-            .expect("ProgressiveBitList should not exceed tree hash leaf limit");
+            .expect("ProgressiveMerkleHasher has no leaf limit, so write cannot fail");
 
         let bitfield_root = hasher
             .finish()
-            .expect("ProgressiveBitList tree hash buffer should not exceed leaf limit");
+            .expect("ProgressiveMerkleHasher has no leaf limit, so finish cannot fail");
         mix_in_length(&bitfield_root, self.len())
     }
 }

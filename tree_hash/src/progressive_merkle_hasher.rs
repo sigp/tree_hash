@@ -1,9 +1,26 @@
 use crate::{Hash256, MerkleHasher, BYTES_PER_CHUNK};
 use ethereum_hashing::hash32_concat;
+use smallvec::SmallVec;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     MerkleHasher(crate::merkle_hasher::Error),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::MerkleHasher(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::MerkleHasher(e) => Some(e),
+        }
+    }
 }
 
 /// A progressive Merkle hasher that implements the semantics of `merkleize_progressive` as
@@ -41,16 +58,17 @@ pub struct ProgressiveMerkleHasher {
     /// Index 0 = first completed level (1 leaf), index 1 = second level (4 leaves), etc.
     /// Level i contains 4^i leaves.
     completed_roots: Vec<Hash256>,
-    /// MerkleHasher for computing the current level's binary tree root.
-    current_hasher: MerkleHasher,
+    /// `MerkleHasher` for computing the current level's binary tree root, created lazily on the
+    /// first chunk of each level so that a level completed by its final chunk does not allocate a
+    /// hasher that is never used.
+    current_hasher: Option<MerkleHasher>,
     /// The number of leaves expected at the current level (1, 4, 16, 64, ...).
     current_level_size: usize,
     /// Number of chunks written to the current hasher.
     current_level_chunks: usize,
-    /// Buffer for bytes that haven't been completed into a chunk yet.
-    buffer: Vec<u8>,
-    /// Total number of chunks written so far.
-    total_chunks: usize,
+    /// Carry for bytes that haven't been completed into a chunk yet. Always < 32 bytes, so this
+    /// never spills to the heap.
+    buffer: SmallVec<[u8; BYTES_PER_CHUNK]>,
 }
 
 impl ProgressiveMerkleHasher {
@@ -58,11 +76,10 @@ impl ProgressiveMerkleHasher {
     pub fn new() -> Self {
         Self {
             completed_roots: Vec::new(),
-            current_hasher: MerkleHasher::with_leaves(1),
+            current_hasher: None,
             current_level_size: 1,
             current_level_chunks: 0,
-            buffer: Vec::new(),
-            total_chunks: 0,
+            buffer: SmallVec::new(),
         }
     }
 
@@ -74,51 +91,63 @@ impl ProgressiveMerkleHasher {
     ///
     /// # Errors
     ///
-    /// Returns an error if writing these bytes would exceed the maximum number of leaves.
+    /// This hasher imposes no leaf limit, so under normal use `write` does not fail; the `Result`
+    /// only forwards an error from the internal per-level [`MerkleHasher`], which is not expected
+    /// to occur.
     pub fn write(&mut self, bytes: &[u8]) -> Result<(), Error> {
-        // Add bytes to buffer
-        self.buffer.extend_from_slice(bytes);
+        let mut bytes = bytes;
 
-        // Process complete chunks from buffer
-        while self.buffer.len() >= BYTES_PER_CHUNK {
-            let mut chunk = [0u8; BYTES_PER_CHUNK];
-            chunk.copy_from_slice(&self.buffer[..BYTES_PER_CHUNK]);
-            self.buffer.drain(..BYTES_PER_CHUNK);
+        // If a partial carry exists, top it up from the front of `bytes` to complete a chunk.
+        if !self.buffer.is_empty() {
+            let take = (BYTES_PER_CHUNK - self.buffer.len()).min(bytes.len());
+            self.buffer.extend_from_slice(&bytes[..take]);
+            bytes = &bytes[take..];
 
+            // Still short of a full chunk; nothing more to do.
+            if self.buffer.len() < BYTES_PER_CHUNK {
+                return Ok(());
+            }
+
+            let chunk = std::mem::take(&mut self.buffer);
+            self.process_chunk(&chunk)?;
+        }
+
+        // Forward each complete 32-byte chunk directly, then carry the remainder.
+        let mut chunks = bytes.chunks_exact(BYTES_PER_CHUNK);
+        for chunk in &mut chunks {
             self.process_chunk(chunk)?;
         }
+        self.buffer.extend_from_slice(chunks.remainder());
 
         Ok(())
     }
 
-    /// Process a single chunk by adding it to the current level and completing the level if full.
-    fn process_chunk(&mut self, chunk: [u8; BYTES_PER_CHUNK]) -> Result<(), Error> {
-        // Write the chunk to the current MerkleHasher
-        self.current_hasher
-            .write(&chunk)
-            .map_err(Error::MerkleHasher)?;
+    /// Process a single 32-byte chunk by adding it to the current level and completing the level if
+    /// full.
+    fn process_chunk(&mut self, chunk: &[u8]) -> Result<(), Error> {
+        // Lazily create the current level's hasher, so a level completed by its final chunk does
+        // not allocate a hasher that is immediately discarded.
+        let level_size = self.current_level_size;
+        let hasher = self
+            .current_hasher
+            .get_or_insert_with(|| MerkleHasher::with_leaves(level_size));
+        hasher.write(chunk).map_err(Error::MerkleHasher)?;
 
         self.current_level_chunks += 1;
-        self.total_chunks += 1;
 
-        // Check if current level is complete
+        // Once the current level is full, finalize its binary root and advance to the next level
+        // (4x larger). `current_level_size` grows as 4^i, which cannot overflow `usize` in
+        // practice: completing level i requires streaming 4^i chunks, far beyond any realizable
+        // input.
         if self.current_level_chunks == self.current_level_size {
-            // Move to next level (4x larger)
-            let next_level_size = self.current_level_size * 4;
-
-            // Replace the current hasher with a new one for the next level
-            let completed_hasher = std::mem::replace(
-                &mut self.current_hasher,
-                MerkleHasher::with_leaves(next_level_size),
-            );
-
-            // Finish the completed hasher to get the root
+            let completed_hasher = self
+                .current_hasher
+                .take()
+                .expect("current hasher exists after a chunk has been written");
             let root = completed_hasher.finish().map_err(Error::MerkleHasher)?;
-
-            // Store this completed root
             self.completed_roots.push(root);
 
-            self.current_level_size = next_level_size;
+            self.current_level_size *= 4;
             self.current_level_chunks = 0;
         }
 
@@ -136,58 +165,55 @@ impl ProgressiveMerkleHasher {
         if !self.buffer.is_empty() {
             let mut chunk = [0u8; BYTES_PER_CHUNK];
             chunk[..self.buffer.len()].copy_from_slice(&self.buffer);
-            self.process_chunk(chunk)?;
+            self.process_chunk(&chunk)?;
         }
 
-        // If we have no chunks at all, return zero hash
-        if self.total_chunks == 0 {
+        // With no chunks at all, the root is zero. Because the first level holds a single chunk,
+        // any processed chunk immediately populates `completed_roots`, so this is exactly the
+        // empty case.
+        if self.completed_roots.is_empty() && self.current_level_chunks == 0 {
             return Ok(Hash256::ZERO);
         }
 
-        // If there are chunks in current level (partial level), compute their root
+        // If the final level is partially filled, compute its (zero-padded) binary root.
         let current_root = if self.current_level_chunks > 0 {
-            Some(self.current_hasher.finish().map_err(Error::MerkleHasher)?)
+            let hasher = self
+                .current_hasher
+                .take()
+                .expect("current hasher exists while the level is partially filled");
+            Some(hasher.finish().map_err(Error::MerkleHasher)?)
         } else {
             None
         };
 
-        // Build the progressive tree from completed roots and current root
-        // completed_roots are in order: [smallest level, ..., largest level]
-        // We need to build from left to right in the tree
-        Ok(Self::build_progressive_root(
-            current_root,
-            self.completed_roots,
-        ))
+        // completed_roots are in order [smallest level, ..., largest level]; build the progressive
+        // tree by folding them from the largest level inward.
+        Ok(build_progressive_root(current_root, &self.completed_roots))
+    }
+}
+
+/// Build the final progressive merkle root by combining completed subtree roots.
+///
+/// The progressive tree structure: at each node, `hash(left = this level, right = deeper levels)`.
+/// This builds the tree from the largest (rightmost) level backwards to the smallest (leftmost).
+fn build_progressive_root(current_root: Option<Hash256>, completed_roots: &[Hash256]) -> Hash256 {
+    // Per EIP-7916, a partial final level still follows the progressive structure:
+    //   merkleize_progressive(chunks, n)
+    //     = hash(merkleize(chunks[:n], n), merkleize_progressive(chunks[n:], n*4))
+    // so a partial level with k chunks becomes hash(merkleize(chunks, n), ZERO).
+    let mut result = if let Some(curr) = current_root {
+        Hash256::from(hash32_concat(curr.as_slice(), Hash256::ZERO.as_slice()))
+    } else {
+        Hash256::ZERO
+    };
+
+    // Fold completed roots from largest to smallest: result = hash(completed_root, result), where
+    // completed_root is the left (binary) subtree and result accumulates the deeper levels.
+    for &completed_root in completed_roots.iter().rev() {
+        result = Hash256::from(hash32_concat(completed_root.as_slice(), result.as_slice()));
     }
 
-    /// Build the final progressive merkle root by combining completed subtree roots.
-    ///
-    /// The progressive tree structure: at each node, hash(left=this_level, right=deeper_levels).
-    /// This builds the tree from the largest (rightmost) level backwards to the smallest (leftmost).
-    fn build_progressive_root(
-        current_root: Option<Hash256>,
-        completed_roots: Vec<Hash256>,
-    ) -> Hash256 {
-        // Start from the rightmost (largest/deepest) level
-        // Per EIP-7916 spec, even partial levels follow the progressive structure:
-        // merkleize_progressive(chunks, n) = hash(merkleize(chunks[:n], n), merkleize_progressive(chunks[n:], n*4))
-        // So a partial level with k chunks becomes: hash(merkleize(chunks, n), ZERO (no further chunks))
-        let mut result = if let Some(curr) = current_root {
-            Hash256::from_slice(&hash32_concat(curr.as_slice(), Hash256::ZERO.as_slice()))
-        } else {
-            Hash256::ZERO
-        };
-
-        // Process completed roots from largest to smallest (reverse order)
-        // At each step: result = hash(completed_root, result)
-        // - completed_root is the left subtree at this level (binary tree)
-        // - result accumulates the right subtree (deeper/larger levels)
-        for &completed_root in completed_roots.iter().rev() {
-            result = Hash256::from(hash32_concat(completed_root.as_slice(), result.as_slice()));
-        }
-
-        result
-    }
+    result
 }
 
 impl Default for ProgressiveMerkleHasher {
@@ -200,6 +226,50 @@ impl Default for ProgressiveMerkleHasher {
 mod tests {
     use super::*;
     use crate::merkle_root;
+
+    /// Independent, non-streaming reference implementation of `merkleize_progressive` (EIP-7916),
+    /// used to cross-check the streaming hasher.
+    fn reference_progressive(chunks: &[[u8; BYTES_PER_CHUNK]], num_leaves: usize) -> Hash256 {
+        if chunks.is_empty() {
+            return Hash256::ZERO;
+        }
+        let take = num_leaves.min(chunks.len());
+        let left_bytes: Vec<u8> = chunks[..take].iter().flatten().copied().collect();
+        let left = merkle_root(&left_bytes, num_leaves);
+        let right = reference_progressive(&chunks[take..], num_leaves * 4);
+        Hash256::from(hash32_concat(left.as_slice(), right.as_slice()))
+    }
+
+    fn streaming_root(chunks: &[[u8; BYTES_PER_CHUNK]]) -> Hash256 {
+        let mut hasher = ProgressiveMerkleHasher::new();
+        for chunk in chunks {
+            hasher.write(chunk).unwrap();
+        }
+        hasher.finish().unwrap()
+    }
+
+    fn indexed_chunk(i: usize) -> [u8; BYTES_PER_CHUNK] {
+        let mut c = [0u8; BYTES_PER_CHUNK];
+        c[..8].copy_from_slice(&(i as u64 + 1).to_le_bytes());
+        c
+    }
+
+    /// Cross-check the streaming hasher against the recursive reference across a range of chunk
+    /// counts, including exact level fills (1, 5, 21, 85, 341), partial trailing levels, and a
+    /// deep level (>256) that crosses the inner `MerkleHasher`'s inline-stack capacity.
+    #[test]
+    fn matches_reference_oracle() {
+        for count in [
+            0usize, 1, 2, 3, 4, 5, 6, 16, 20, 21, 22, 64, 84, 85, 86, 200, 341, 342,
+        ] {
+            let chunks: Vec<[u8; BYTES_PER_CHUNK]> = (0..count).map(indexed_chunk).collect();
+            assert_eq!(
+                streaming_root(&chunks),
+                reference_progressive(&chunks, 1),
+                "mismatch for {count} chunks"
+            );
+        }
+    }
 
     #[test]
     fn test_empty_tree() {
@@ -282,8 +352,12 @@ mod tests {
         hasher.write(&[3u8; 32]).unwrap();
         let root = hasher.finish().unwrap();
 
-        // Should handle multiple writes correctly
-        assert_ne!(root, Hash256::ZERO);
+        // The three writes form exactly two chunks: [1; 16] ++ [2; 16], then [3; 32].
+        let mut chunk0 = [0u8; BYTES_PER_CHUNK];
+        chunk0[..16].fill(1);
+        chunk0[16..].fill(2);
+        let chunk1 = [3u8; BYTES_PER_CHUNK];
+        assert_eq!(root, reference_progressive(&[chunk0, chunk1], 1));
     }
 
     #[test]
@@ -327,39 +401,16 @@ mod tests {
 
     #[test]
     fn test_21_chunks() {
-        // Test with 21 chunks as per problem statement:
-        // chunks[0] goes to left at level 1 (1 leaf)
-        // chunks[1..5] go to left at level 2 (4 leaves)
-        // chunks[5..21] go to left at level 3 (16 leaves)
-        let mut hasher = ProgressiveMerkleHasher::new();
-        for i in 0..21 {
-            let mut chunk = [0u8; BYTES_PER_CHUNK];
-            chunk[0] = i as u8;
-            hasher.write(&chunk).unwrap();
-        }
-        let root = hasher.finish().unwrap();
-
-        // Root should not be zero
-        assert_ne!(root, Hash256::ZERO);
+        // 21 chunks exactly fills levels 1 + 4 + 16.
+        let chunks: Vec<[u8; BYTES_PER_CHUNK]> = (0..21).map(indexed_chunk).collect();
+        assert_eq!(streaming_root(&chunks), reference_progressive(&chunks, 1));
     }
 
     #[test]
     fn test_85_chunks() {
-        // Test with 85 chunks as per problem statement structure:
-        // chunks[0] at level 1 (1 leaf)
-        // chunks[1..5] at level 2 (4 leaves)
-        // chunks[5..21] at level 3 (16 leaves)
-        // chunks[21..85] at level 4 (64 leaves)
-        let mut hasher = ProgressiveMerkleHasher::new();
-        for i in 0..85 {
-            let mut chunk = [0u8; BYTES_PER_CHUNK];
-            chunk[0] = (i % 256) as u8;
-            hasher.write(&chunk).unwrap();
-        }
-        let root = hasher.finish().unwrap();
-
-        // Root should not be zero
-        assert_ne!(root, Hash256::ZERO);
+        // 85 chunks exactly fills levels 1 + 4 + 16 + 64.
+        let chunks: Vec<[u8; BYTES_PER_CHUNK]> = (0..85).map(indexed_chunk).collect();
+        assert_eq!(streaming_root(&chunks), reference_progressive(&chunks, 1));
     }
 
     #[test]
