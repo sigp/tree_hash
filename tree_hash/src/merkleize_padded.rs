@@ -302,7 +302,7 @@ mod test {
         use rand::RngCore;
 
         fn random_bytes(bytes: usize) -> Vec<u8> {
-            let mut bytes = Vec::with_capacity(bytes);
+            let mut bytes = vec![0; bytes];
             rand::rng().fill_bytes(&mut bytes);
             bytes
         }
