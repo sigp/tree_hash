@@ -236,10 +236,12 @@ impl MerkleHasher {
     fn process_leaf(&mut self, leaf: &[u8]) -> Result<(), Error> {
         assert_eq!(leaf.len(), HASHSIZE, "a leaf must be 32 bytes");
 
-        let max_leaves = 1 << (self.depth + 1);
-
-        if self.next_leaf > max_leaves {
-            return Err(Error::MaximumLeavesExceeded { max_leaves });
+        // Leaf ids occupy the range `2^(depth - 1)..2^depth`, so the tree is full once
+        // `next_leaf` reaches `2^depth`.
+        if self.next_leaf >= 1 << self.depth {
+            return Err(Error::MaximumLeavesExceeded {
+                max_leaves: 1 << (self.depth - 1),
+            });
         } else if self.next_leaf == 1 {
             // A tree of depth one has a root that is equal to the first given leaf.
             self.root = Some(Hash256::from_slice(leaf))

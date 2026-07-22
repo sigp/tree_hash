@@ -7,7 +7,8 @@
 
 use proptest::prelude::*;
 use tree_hash::{
-    merkle_root, merkleize_padded, merkleize_standard, Hash256, MerkleHasher, BYTES_PER_CHUNK,
+    merkle_root, merkleize_padded, merkleize_standard, Error, Hash256, MerkleHasher,
+    BYTES_PER_CHUNK,
 };
 
 const MAX_BYTES: usize = 2048;
@@ -54,6 +55,32 @@ proptest! {
         let root = hasher.finish().expect("num_leaves is sufficient for bytes");
 
         prop_assert_eq!(root, merkleize_padded(&bytes, num_leaves));
+    }
+
+    #[test]
+    fn merkle_hasher_rejects_too_many_bytes(
+        num_leaves in 0_usize..=MAX_MIN_CHUNKS,
+        extra_bytes in 1_usize..=3 * BYTES_PER_CHUNK,
+        write_size in 1_usize..=64,
+    ) {
+        // `with_leaves` rounds the leaf count up to the next power of two, so that is the true
+        // capacity of the tree.
+        let capacity = num_leaves.next_power_of_two();
+        let bytes = vec![0xff_u8; capacity * BYTES_PER_CHUNK + extra_bytes];
+
+        // Any bytes beyond the tree's capacity must produce an error, never a root that silently
+        // ignores them. Depending on `extra_bytes` and `write_size` the error surfaces either in
+        // `write` (a whole excess leaf) or in `finish` (excess bytes still in the buffer).
+        let mut hasher = MerkleHasher::with_leaves(num_leaves);
+        let result = bytes
+            .chunks(write_size)
+            .try_for_each(|chunk| hasher.write(chunk))
+            .and_then(|()| hasher.finish().map(|_| ()));
+
+        prop_assert_eq!(
+            result,
+            Err(Error::MaximumLeavesExceeded { max_leaves: capacity })
+        );
     }
 
     #[test]
