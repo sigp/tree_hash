@@ -127,9 +127,7 @@ fn variable_union() {
     );
 }
 
-/// Independent oracle for a derived container's root: merkleize the concatenated field roots,
-/// padded out to one leaf per hashed field. This mirrors the SSZ container definition without
-/// reusing the derive macro's own `MerkleHasher` call.
+/// Computes the expected root of a container by merkleizing its field roots, one leaf per field.
 fn container_root(field_roots: &[Hash256]) -> Hash256 {
     let mut leaves = Vec::with_capacity(field_roots.len() * BYTES_PER_CHUNK);
     for root in field_roots {
