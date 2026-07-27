@@ -58,6 +58,24 @@ fn should_skip_hashing(field: &syn::Field) -> bool {
     })
 }
 
+/// Check that an enum variant has exactly one unnamed (tuple) field, panicking otherwise.
+///
+/// The generated match patterns are tuple patterns (`Enum::Variant(ref inner)`), so a variant with
+/// a named field would otherwise fail with a confusing error in the generated code.
+fn check_variant_has_single_unnamed_field(variant: &syn::Variant) {
+    let has_single_unnamed_field = matches!(
+        &variant.fields,
+        syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1
+    );
+    if !has_single_unnamed_field {
+        panic!(
+            "TreeHash can only be derived for enums where each variant has a single unnamed field \
+             (variant \"{}\" does not)",
+            variant.ident
+        );
+    }
+}
+
 /// Implements `tree_hash::TreeHash` for a type.
 ///
 /// Fields are hashed in the order they are defined.
@@ -245,9 +263,7 @@ fn tree_hash_derive_enum_transparent(
         .map(|variant| {
             let variant_name = &variant.ident;
 
-            if variant.fields.len() != 1 {
-                panic!("TreeHash can only be derived for enums with 1 field per variant");
-            }
+            check_variant_has_single_unnamed_field(variant);
 
             let pattern = quote! {
                 #name::#variant_name(ref inner)
@@ -324,9 +340,7 @@ fn tree_hash_derive_enum_union(
         .map(|variant| {
             let variant_name = &variant.ident;
 
-            if variant.fields.len() != 1 {
-                panic!("TreeHash can only be derived for enums with 1 field per variant");
-            }
+            check_variant_has_single_unnamed_field(variant);
 
             quote! {
                 #name::#variant_name(ref inner)
