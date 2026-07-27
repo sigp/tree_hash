@@ -141,8 +141,9 @@ pub struct MerkleHasher {
     half_nodes: SmallVec8<HalfNode>,
     /// The depth of the tree that will be produced.
     ///
-    /// Depth is counted top-down (i.e., the root node is at depth 0). A tree with 1 leaf has a
-    /// depth of 1, a tree with 4 leaves has a depth of 3.
+    /// This is one greater than the depth of the deepest node (see `get_depth`), since a
+    /// single-node tree has one layer but its root is at node-depth 0. E.g., a tree with 1 leaf
+    /// has a depth of 1, and a tree with 4 leaves has a depth of 3.
     depth: usize,
     /// The next leaf that we are expecting to process.
     next_leaf: usize,
@@ -157,11 +158,12 @@ fn get_parent(i: usize) -> usize {
     i / 2
 }
 
-/// Gets the depth of a node with an id of `i`.
+/// Gets the depth of a node with an id of `i`, where the root node (`i == 1`) has depth 0 and
+/// depth increases moving down the tree.
 ///
 /// It is a logic error to provide `i == 0`.
 ///
-/// E.g., if `i` is 1, depth is 0. If `i` is is 1, depth is 1.
+/// E.g., if `i` is 1, depth is 0. If `i` is 2 or 3, depth is 1.
 fn get_depth(i: usize) -> usize {
     let total_bits = mem::size_of::<usize>() * 8;
     total_bits - i.leading_zeros() as usize - 1
@@ -249,10 +251,12 @@ impl MerkleHasher {
     fn process_leaf(&mut self, leaf: &[u8]) -> Result<(), Error> {
         assert_eq!(leaf.len(), HASHSIZE, "a leaf must be 32 bytes");
 
-        let max_leaves = 1 << (self.depth + 1);
-
-        if self.next_leaf > max_leaves {
-            return Err(Error::MaximumLeavesExceeded { max_leaves });
+        // Leaf ids occupy the range `2^(depth - 1)..2^depth`, so the tree is full once
+        // `next_leaf` reaches `2^depth`.
+        if self.next_leaf >= 1 << self.depth {
+            return Err(Error::MaximumLeavesExceeded {
+                max_leaves: 1 << (self.depth - 1),
+            });
         } else if self.next_leaf == 1 {
             // A tree of depth one has a root that is equal to the first given leaf.
             self.root = Some(Hash256::from_slice(leaf))

@@ -40,6 +40,8 @@ jobs:
       run: rustup update stable
     - name: Run tests
       run: cargo test --release
+      env:
+        PROPTEST_CASES: 100000
     - name: Check all examples, binaries, etc
       run: cargo check --all-targets
   coverage:

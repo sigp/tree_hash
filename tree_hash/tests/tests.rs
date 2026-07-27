@@ -3,8 +3,8 @@ use ssz::ProgressiveBitList;
 use ssz_derive::Encode;
 use std::str::FromStr;
 use tree_hash::{
-    mix_in_active_fields, Hash256, MerkleHasher, PackedEncoding, ProgressiveMerkleHasher, TreeHash,
-    BYTES_PER_CHUNK,
+    merkle_root, mix_in_active_fields, Hash256, MerkleHasher, PackedEncoding,
+    ProgressiveMerkleHasher, TreeHash, BYTES_PER_CHUNK,
 };
 use tree_hash_derive::TreeHash;
 
@@ -129,6 +129,131 @@ fn variable_union() {
     assert_eq!(
         VariableUnion::B(HashVec::from(vec![2])).tree_hash_root(),
         mix_in_selector(u8_hash_concat(2, 1), 1)
+    );
+}
+
+/// Computes the expected root of a container by merkleizing its field roots, one leaf per field.
+fn container_root(field_roots: &[Hash256]) -> Hash256 {
+    let mut leaves = Vec::with_capacity(field_roots.len() * BYTES_PER_CHUNK);
+    for root in field_roots {
+        leaves.extend_from_slice(root.as_slice());
+    }
+    merkle_root(&leaves, field_roots.len())
+}
+
+#[derive(TreeHash)]
+struct Basic {
+    a: u8,
+    b: u64,
+    c: Hash256,
+}
+
+#[test]
+fn struct_basic() {
+    let x = Basic {
+        a: 1,
+        b: 2,
+        c: Hash256::repeat_byte(3),
+    };
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[
+            x.a.tree_hash_root(),
+            x.b.tree_hash_root(),
+            x.c.tree_hash_root(),
+        ])
+    );
+}
+
+#[test]
+fn struct_is_container_type() {
+    assert_eq!(Basic::tree_hash_type(), tree_hash::TreeHashType::Container);
+}
+
+#[derive(TreeHash)]
+struct Single {
+    only: Hash256,
+}
+
+#[test]
+fn struct_single_field() {
+    // A one-field container hashes to that field's root unchanged.
+    let x = Single {
+        only: Hash256::repeat_byte(7),
+    };
+    assert_eq!(x.tree_hash_root(), x.only.tree_hash_root());
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[x.only.tree_hash_root()])
+    );
+}
+
+#[derive(TreeHash)]
+struct WithSkip {
+    a: u8,
+    // Never read; only present to prove `skip_hashing` excludes it from the root.
+    #[allow(dead_code)]
+    #[tree_hash(skip_hashing)]
+    b: u64,
+    c: u8,
+}
+
+#[test]
+fn struct_skip_hashing() {
+    let x = WithSkip { a: 1, b: 999, c: 3 };
+
+    // The skipped field is absent from the tree: the root is a two-leaf container of `a` and `c`.
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[x.a.tree_hash_root(), x.c.tree_hash_root()])
+    );
+
+    // Mutating only the skipped field must not change the root.
+    let y = WithSkip {
+        a: 1,
+        b: 12345,
+        c: 3,
+    };
+    assert_eq!(x.tree_hash_root(), y.tree_hash_root());
+}
+
+#[derive(TreeHash)]
+struct Nested {
+    inner: Basic,
+    tag: u8,
+}
+
+#[test]
+fn struct_nested() {
+    let x = Nested {
+        inner: Basic {
+            a: 1,
+            b: 2,
+            c: Hash256::repeat_byte(3),
+        },
+        tag: 9,
+    };
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[x.inner.tree_hash_root(), x.tag.tree_hash_root()])
+    );
+}
+
+#[derive(TreeHash)]
+struct Generic<T: TreeHash> {
+    value: T,
+    count: u64,
+}
+
+#[test]
+fn struct_generic() {
+    let x = Generic {
+        value: 42u16,
+        count: 7,
+    };
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[x.value.tree_hash_root(), x.count.tree_hash_root()])
     );
 }
 
