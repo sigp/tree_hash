@@ -320,7 +320,7 @@ fn progressive_merkle_root_bytes(bytes: &[u8]) -> Hash256 {
 fn progressive_bitlist_empty() {
     // An empty bitlist must hash as mix_in_length(merkleize_progressive([]) = ZERO, 0), exercising
     // the empty-list workaround (an empty bitlist still stores a single zero byte internally).
-    let bitlist = ProgressiveBitList::with_capacity(0).unwrap();
+    let bitlist = ProgressiveBitList::with_capacity(0);
     assert_eq!(
         bitlist.tree_hash_root(),
         tree_hash::mix_in_length(&Hash256::ZERO, 0)
@@ -332,7 +332,7 @@ fn progressive_bitlist_matches_packed_progressive() {
     // The root must equal mix_in_length(merkleize_progressive(pack_bits(value)), len) for a range
     // of lengths, including byte- and chunk-aligned cases and progressive level crossings.
     for len in [1usize, 7, 8, 9, 16, 100, 256, 257, 1024] {
-        let mut bitlist = ProgressiveBitList::with_capacity(len).unwrap();
+        let mut bitlist = ProgressiveBitList::with_capacity(len);
         for i in (0..len).step_by(3) {
             bitlist.set(i, true).unwrap();
         }
@@ -346,8 +346,8 @@ fn progressive_bitlist_matches_packed_progressive() {
 #[test]
 fn progressive_bitlist_nonempty_all_false_differs_from_empty() {
     // A non-empty all-false bitlist must NOT short-circuit to the empty value.
-    let bitlist = ProgressiveBitList::with_capacity(8).unwrap();
-    let empty = ProgressiveBitList::with_capacity(0).unwrap();
+    let bitlist = ProgressiveBitList::with_capacity(8);
+    let empty = ProgressiveBitList::with_capacity(0);
 
     assert_ne!(bitlist.tree_hash_root(), empty.tree_hash_root());
     assert_eq!(
