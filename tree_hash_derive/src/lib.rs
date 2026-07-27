@@ -410,21 +410,29 @@ fn parse_variant_opts(enum_data: &DataEnum) -> Vec<VariantOpts> {
                 })
             };
 
-            let tree_hash_opts = tree_hash_attrs.first().map(|attr| parse_opts(&attr.meta));
-            let ssz_opts = ssz_attrs.first().map(|attr| parse_opts(&attr.meta));
+            let tree_hash_opts = tree_hash_attrs
+                .first()
+                .map(|attr| parse_opts(&attr.meta))
+                .unwrap_or_default();
+            let ssz_opts = ssz_attrs
+                .first()
+                .map(|attr| parse_opts(&attr.meta))
+                .unwrap_or_default();
 
-            // Check consistency with SSZ opts, or fall back to SSZ attribute if tree_hash attribute
-            // is absent.
-            match (tree_hash_opts, ssz_opts) {
-                (Some(tree_hash), Some(ssz)) => {
-                    assert_eq!(
-                        tree_hash, ssz,
-                        "inconsistent \"tree_hash\" and \"ssz\" attributes"
-                    );
-                    tree_hash
-                }
-                (Some(attr), None) | (None, Some(attr)) => attr,
-                (None, None) => VariantOpts::default(),
+            // Merge the `tree_hash` and `ssz` opts field-by-field, so that an attribute which is
+            // present but does not set `selector` (e.g. one carrying only ssz-specific keys) does
+            // not conflict with one that does.
+            if let (Some(tree_hash_selector), Some(ssz_selector)) =
+                (tree_hash_opts.selector, ssz_opts.selector)
+            {
+                assert_eq!(
+                    tree_hash_selector, ssz_selector,
+                    "inconsistent selectors in \"tree_hash\" and \"ssz\" attributes for variant \
+                     \"{variant_name}\""
+                );
+            }
+            VariantOpts {
+                selector: tree_hash_opts.selector.or(ssz_opts.selector),
             }
         })
         .collect()

@@ -25,7 +25,7 @@ pub struct StructOpts {
 /// These attributes NEED to be kept in sync with `ethereum_ssz` because both crates try to read
 /// each others attributes to avoid mandatory duplication. In future this might mean parsing some
 /// SSZ-only attributes here and then ignoring them.
-#[derive(Debug, Default, PartialEq, FromMeta)]
+#[derive(Debug, Default, FromMeta)]
 // `allow_unknown_fields` ensures that `ssz`-only keys (current or future) on a shared variant
 // attribute are tolerated and ignored here, rather than causing a parse error. This mirrors
 // `ssz_derive`'s `VariantOpts`, which tolerates `tree_hash`-only keys for the same reason.

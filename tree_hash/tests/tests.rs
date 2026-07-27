@@ -434,6 +434,25 @@ fn compatible_union_reads_ssz_selectors() {
     );
 }
 
+#[derive(Encode, TreeHash)]
+#[ssz(enum_behaviour = "compatible_union")]
+#[tree_hash(enum_behaviour = "compatible_union")]
+enum CompatUnionBothSelectors {
+    #[ssz(selector = "3")]
+    #[tree_hash(selector = "3")]
+    A(u8),
+}
+
+#[test]
+fn compatible_union_consistent_selectors_in_both_attributes() {
+    // Setting the same selector in both the `ssz` and `tree_hash` attributes is permitted (the
+    // derive only rejects *inconsistent* selectors).
+    assert_eq!(
+        CompatUnionBothSelectors::A(2).tree_hash_root(),
+        mix_in_selector(u8_hash(2), 3)
+    );
+}
+
 /// Merkleize raw bytes (zero-padded into chunks) via the public progressive hasher.
 fn progressive_merkle_root_bytes(bytes: &[u8]) -> Hash256 {
     let mut hasher = ProgressiveMerkleHasher::new();
