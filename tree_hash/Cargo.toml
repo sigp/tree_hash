@@ -18,6 +18,7 @@ smallvec = "1"
 typenum = "1"
 
 [dev-dependencies]
+proptest = "1"
 rand = "0.9"
 tree_hash_derive = { path = "../tree_hash_derive" }
 ethereum_ssz_derive = "0.10"
