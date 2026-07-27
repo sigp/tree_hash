@@ -257,6 +257,15 @@ fn tree_hash_derive_enum_transparent(
     let name = &derive_input.ident;
     let (impl_generics, ty_generics, where_clause) = &derive_input.generics.split_for_impl();
 
+    // Selectors (whether from a `tree_hash` or `ssz` attribute) are never mixed in by a
+    // transparent enum, so reject them rather than silently ignoring them.
+    assert!(
+        parse_variant_opts(enum_data)
+            .iter()
+            .all(|opt| opt.selector.is_none()),
+        "specifying the selector in a transparent enum is not supported"
+    );
+
     let (patterns, type_exprs): (Vec<_>, Vec<_>) = enum_data
         .variants
         .iter()
