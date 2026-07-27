@@ -492,6 +492,11 @@ fn compute_union_selectors(num_variants: usize) -> Vec<u8> {
 }
 
 fn get_compatible_union_selectors(enum_data: &DataEnum, variant_opts: &[VariantOpts]) -> Vec<u8> {
+    assert!(
+        !enum_data.variants.is_empty(),
+        "0-variant union is not permitted"
+    );
+
     let mut seen_selectors = HashSet::new();
     enum_data
         .variants
