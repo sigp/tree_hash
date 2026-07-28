@@ -82,7 +82,12 @@ fn check_variant_has_single_unnamed_field(variant: &syn::Variant) {
 #[proc_macro_derive(TreeHash, attributes(tree_hash))]
 pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as DeriveInput);
-    let opts = StructOpts::from_derive_input(&item).unwrap();
+    let opts = match StructOpts::from_derive_input(&item) {
+        Ok(opts) => opts,
+        // Emit `darling`'s own spanned compile errors rather than panicking, so the diagnostic
+        // points at the offending attribute instead of the whole derive.
+        Err(e) => return e.write_errors().into(),
+    };
     let enum_opt = opts.enum_behaviour;
     let struct_opt = opts.struct_behaviour;
 
@@ -94,6 +99,11 @@ pub fn tree_hash_derive(input: TokenStream) -> TokenStream {
             let struct_behaviour = struct_opt.unwrap_or_default();
             tree_hash_derive_struct(&item, s, struct_behaviour, opts.active_fields)
         }
+        (syn::Data::Enum(_), None, _) => panic!(
+            "enums require an \"enum_behaviour\" attribute with a value of \"transparent\", \
+             \"union\" or \"compatible_union\", e.g., #[tree_hash(enum_behaviour = \
+             \"transparent\")]"
+        ),
         (syn::Data::Enum(s), Some(enum_behaviour), struct_opt) => {
             if struct_opt.is_some() {
                 panic!("struct_behaviour is invalid for enums");

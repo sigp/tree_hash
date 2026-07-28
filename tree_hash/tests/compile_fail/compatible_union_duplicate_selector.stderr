@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/compatible_union_duplicate_selector.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: selector = 1 for variant "B" is used more than once

@@ -1,0 +1,19 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/inconsistent_selectors.rs:6:10
+  |
+6 | #[derive(Encode, TreeHash)]
+  |          ^^^^^^
+  |
+  = help: message: assertion `left == right` failed: inconsistent "ssz" and "tree_hash" attributes
+            left: VariantOpts { selector: Some(5) }
+           right: VariantOpts { selector: Some(3) }
+
+error: proc-macro derive panicked
+ --> tests/compile_fail/inconsistent_selectors.rs:6:18
+  |
+6 | #[derive(Encode, TreeHash)]
+  |                  ^^^^^^^^
+  |
+  = help: message: assertion `left == right` failed: inconsistent selectors in "tree_hash" and "ssz" attributes for variant "A"
+            left: 5
+           right: 3

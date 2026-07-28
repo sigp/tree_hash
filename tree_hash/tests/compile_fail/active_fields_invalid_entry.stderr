@@ -1,0 +1,5 @@
+error: invalid integer in active_fields: 2
+ --> tests/compile_fail/active_fields_invalid_entry.rs:5:57
+  |
+5 | #[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 2))]
+  |                                                         ^^^^^^^^^^^^^

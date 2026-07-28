@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/progressive_missing_active_fields.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: active_fields must be provided for progressive_container

@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/active_fields_on_plain_container.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: active_fields is only valid with struct_behaviour = "progressive_container"

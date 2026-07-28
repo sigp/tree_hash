@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/compatible_union_zero_variants.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: 0-variant union is not permitted
