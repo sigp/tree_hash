@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::HashSet;
 use std::convert::TryInto;
-use syn::{Attribute, DataEnum, DataStruct, DeriveInput, Ident, parse_macro_input};
+use syn::{parse_macro_input, Attribute, DataEnum, DataStruct, DeriveInput, Ident};
 
 /// The highest possible union selector value (higher values are reserved for backwards compatible
 /// extensions).
