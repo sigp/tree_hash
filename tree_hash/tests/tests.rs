@@ -3,8 +3,8 @@ use ssz::ProgressiveBitList;
 use ssz_derive::Encode;
 use std::str::FromStr;
 use tree_hash::{
-    merkle_root, mix_in_active_fields, Hash256, MerkleHasher, PackedEncoding,
-    ProgressiveMerkleHasher, TreeHash, BYTES_PER_CHUNK,
+    BYTES_PER_CHUNK, Hash256, MerkleHasher, PackedEncoding, ProgressiveMerkleHasher, TreeHash,
+    merkle_root, mix_in_active_fields,
 };
 use tree_hash_derive::TreeHash;
 
@@ -497,5 +497,214 @@ fn progressive_bitlist_nonempty_all_false_differs_from_empty() {
     assert_eq!(
         bitlist.tree_hash_root(),
         tree_hash::mix_in_length(&progressive_merkle_root_bytes(bitlist.as_slice()), 8)
+    );
+}
+
+#[derive(TreeHash)]
+#[tree_hash(
+    struct_behaviour = "progressive_container",
+    active_fields(1, 1, 1, 1, 1, 1)
+)]
+struct ProgressiveContainerSixFields {
+    a: u8,
+    b: u8,
+    c: u8,
+    d: u8,
+    e: u8,
+    f: u8,
+}
+
+#[test]
+fn progressive_container_crosses_level_boundary() {
+    // Six leaves span three progressive levels (1 + 4 + partial 16), so this exercises the
+    // macro-generated write loop across level boundaries, unlike the smaller containers above.
+    let container = ProgressiveContainerSixFields {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+        e: 5,
+        f: 6,
+    };
+
+    let leaves = [
+        container.a.tree_hash_root(),
+        container.b.tree_hash_root(),
+        container.c.tree_hash_root(),
+        container.d.tree_hash_root(),
+        container.e.tree_hash_root(),
+        container.f.tree_hash_root(),
+    ];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true; 6]),
+    );
+    assert_eq!(container.tree_hash_root(), expected);
+
+    // Independently computed from the EIP-7916/EIP-7495 pseudocode (not using this crate).
+    assert_eq!(
+        container.tree_hash_root(),
+        Hash256::from_str("0x5b3a785823a6af49e9add04543130b578f8ad774048632aec9d765f0eb949eab")
+            .unwrap()
+    );
+}
+
+#[derive(TreeHash)]
+#[tree_hash(
+    struct_behaviour = "progressive_container",
+    active_fields(1, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+)]
+struct ProgressiveContainerMultiByteActiveFields {
+    a: u8,
+    b: u8,
+}
+
+#[test]
+fn progressive_container_multi_byte_active_fields() {
+    // Ten positions make the packed `active_fields` bitvector span two bytes, exercising the
+    // compile-time packing end-to-end through a derived impl (not just the `attrs` unit tests).
+    let container = ProgressiveContainerMultiByteActiveFields { a: 0xaa, b: 0xbb };
+
+    let mut leaves = vec![container.a.tree_hash_root()];
+    leaves.extend([Hash256::ZERO; 8]);
+    leaves.push(container.b.tree_hash_root());
+
+    let mut bits = [false; 10];
+    bits[0] = true;
+    bits[9] = true;
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&bits),
+    );
+    assert_eq!(container.tree_hash_root(), expected);
+
+    // Independently computed from the EIP-7916/EIP-7495 pseudocode (not using this crate).
+    assert_eq!(
+        container.tree_hash_root(),
+        Hash256::from_str("0x346cfa442bcc5f2288316f185aa5b7e0a292d2e287862cc6f177ee1362862148")
+            .unwrap()
+    );
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 1))]
+struct ProgressiveContainerWithSkip {
+    a: u8,
+    // Never read; only present to prove `skip_hashing` excludes it from the root and does not
+    // consume an `active_fields` entry.
+    #[allow(dead_code)]
+    #[tree_hash(skip_hashing)]
+    b: u64,
+    c: u8,
+}
+
+#[test]
+fn progressive_container_skip_hashing() {
+    let x = ProgressiveContainerWithSkip { a: 1, b: 999, c: 3 };
+
+    // The skipped field is absent from the tree: only `a` and `c` are leaves, matching the two
+    // `active_fields` entries.
+    let leaves = [x.a.tree_hash_root(), x.c.tree_hash_root()];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true, true]),
+    );
+    assert_eq!(x.tree_hash_root(), expected);
+
+    // Mutating only the skipped field must not change the root.
+    let y = ProgressiveContainerWithSkip {
+        a: 1,
+        b: 12345,
+        c: 3,
+    };
+    assert_eq!(x.tree_hash_root(), y.tree_hash_root());
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 1))]
+struct ProgressiveContainerNested {
+    inner: ProgressiveContainerThreeFields,
+    tag: u8,
+}
+
+#[test]
+fn progressive_container_nested() {
+    // A progressive container nested inside another progressive container contributes its own
+    // root (including its `active_fields` mix-in) as a single leaf.
+    let x = ProgressiveContainerNested {
+        inner: ProgressiveContainerThreeFields {
+            a: 7,
+            b: 8,
+            c: Hash256::repeat_byte(9),
+        },
+        tag: 5,
+    };
+
+    let leaves = [x.inner.tree_hash_root(), x.tag.tree_hash_root()];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true, true]),
+    );
+    assert_eq!(x.tree_hash_root(), expected);
+}
+
+#[derive(TreeHash)]
+struct PlainContainerWrapsProgressive {
+    inner: ProgressiveContainerOneField,
+    tag: u8,
+}
+
+#[test]
+fn plain_container_wraps_progressive() {
+    // The other direction: a progressive container as a field of an ordinary container.
+    let x = PlainContainerWrapsProgressive {
+        inner: ProgressiveContainerOneField { x: 125 },
+        tag: 5,
+    };
+    assert_eq!(
+        x.tree_hash_root(),
+        container_root(&[x.inner.tree_hash_root(), x.tag.tree_hash_root()])
+    );
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 1))]
+struct ProgressiveGeneric<T: TreeHash> {
+    value: T,
+    count: u64,
+}
+
+#[test]
+fn progressive_container_generic() {
+    let x = ProgressiveGeneric {
+        value: 42u16,
+        count: 7,
+    };
+    let leaves = [x.value.tree_hash_root(), x.count.tree_hash_root()];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true, true]),
+    );
+    assert_eq!(x.tree_hash_root(), expected);
+}
+
+#[test]
+fn progressive_container_single_field_differs_from_plain() {
+    // Unlike an ordinary single-field container (whose root equals the field's root), a
+    // single-field progressive container wraps the leaf in the progressive structure and the
+    // `active_fields` mix-in, so the roots must differ.
+    let container = ProgressiveContainerOneField { x: 125 };
+    assert_ne!(container.tree_hash_root(), container.x.tree_hash_root());
+}
+
+#[test]
+fn progressive_container_and_compatible_union_are_container_type() {
+    assert_eq!(
+        ProgressiveContainerThreeFields::tree_hash_type(),
+        tree_hash::TreeHashType::Container
+    );
+    assert_eq!(
+        CompatUnion::tree_hash_type(),
+        tree_hash::TreeHashType::Container
     );
 }
