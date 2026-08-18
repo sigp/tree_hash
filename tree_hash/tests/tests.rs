@@ -3,8 +3,8 @@ use ssz::ProgressiveBitList;
 use ssz_derive::Encode;
 use std::str::FromStr;
 use tree_hash::{
-    merkle_root, mix_in_active_fields, Hash256, MerkleHasher, PackedEncoding,
-    ProgressiveMerkleHasher, TreeHash, BYTES_PER_CHUNK,
+    BYTES_PER_CHUNK, Hash256, MerkleHasher, PackedEncoding, ProgressiveMerkleHasher, TreeHash,
+    merkle_root, mix_in_active_fields,
 };
 use tree_hash_derive::TreeHash;
 
