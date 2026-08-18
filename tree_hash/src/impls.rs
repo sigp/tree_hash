@@ -1,6 +1,6 @@
 use super::*;
 use alloy_primitives::{Address, FixedBytes, U128, U256};
-use ssz::{Bitfield, Fixed, Variable};
+use ssz::{Bitfield, Fixed, Progressive, Variable};
 use std::sync::Arc;
 use typenum::Unsigned;
 
@@ -205,6 +205,44 @@ impl<N: Unsigned + Clone> TreeHash for Bitfield<Variable<N>> {
         // present).
         let root = bitfield_bytes_tree_hash_root::<N>(self.as_slice());
         mix_in_length(&root, self.len())
+    }
+}
+
+impl TreeHash for Bitfield<Progressive> {
+    fn tree_hash_type() -> TreeHashType {
+        TreeHashType::List
+    }
+
+    fn tree_hash_packed_encoding(&self) -> PackedEncoding {
+        unreachable!("ProgressiveBitList should never be packed.")
+    }
+
+    fn tree_hash_packing_factor() -> usize {
+        unreachable!("ProgressiveBitList should never be packed.")
+    }
+
+    fn tree_hash_root(&self) -> Hash256 {
+        // XXX: This is a workaround for the fact that the internal representation of bitfields is
+        // misaligned with the spec. An empty bitlist still stores a single zero byte (see
+        // `bytes_for_bit_len`), which would otherwise be hashed as a (non-zero) zero chunk rather
+        // than yielding the empty `merkleize_progressive([]) == Bytes32()` root.
+        //
+        // See:
+        //
+        // - https://github.com/sigp/ethereum_ssz/pull/68
+        if self.is_empty() {
+            return mix_in_length(&Hash256::ZERO, 0);
+        }
+
+        let mut hasher = ProgressiveMerkleHasher::new();
+        hasher
+            .write(self.as_slice())
+            .expect("ProgressiveMerkleHasher has no leaf limit, so write cannot fail");
+
+        let bitfield_root = hasher
+            .finish()
+            .expect("ProgressiveMerkleHasher has no leaf limit, so finish cannot fail");
+        mix_in_length(&bitfield_root, self.len())
     }
 }
 

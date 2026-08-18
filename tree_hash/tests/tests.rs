@@ -1,6 +1,11 @@
 use alloy_primitives::{Address, U128, U160, U256};
+use ssz::ProgressiveBitList;
 use ssz_derive::Encode;
-use tree_hash::{merkle_root, Hash256, MerkleHasher, PackedEncoding, TreeHash, BYTES_PER_CHUNK};
+use std::str::FromStr;
+use tree_hash::{
+    merkle_root, mix_in_active_fields, Hash256, MerkleHasher, PackedEncoding,
+    ProgressiveMerkleHasher, TreeHash, BYTES_PER_CHUNK,
+};
 use tree_hash_derive::TreeHash;
 
 #[derive(Encode)]
@@ -291,4 +296,206 @@ fn packed_encoding_example() {
             "encoding {i} is wrong"
         );
     }
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1))]
+struct ProgressiveContainerOneField {
+    x: u8,
+}
+
+#[test]
+fn progressive_container_one_field() {
+    let container = ProgressiveContainerOneField { x: 125 };
+    assert_eq!(
+        container.tree_hash_root(),
+        Hash256::from_str("0xb6a2f148c33179dec1bdaa979a11776ff2d881fca93974b286443a8539dc0872")
+            .unwrap()
+    );
+}
+
+/// Reference merkleization of a progressive container's leaves, via the public hasher.
+fn progressive_merkle_root(leaves: &[Hash256]) -> Hash256 {
+    let mut hasher = ProgressiveMerkleHasher::new();
+    for leaf in leaves {
+        hasher.write(leaf.as_slice()).unwrap();
+    }
+    hasher.finish().unwrap()
+}
+
+/// Pack `active_fields` bits LSB-first into a single 32-byte chunk.
+fn packed_active_fields(bits: &[bool]) -> [u8; BYTES_PER_CHUNK] {
+    let mut packed = [0u8; BYTES_PER_CHUNK];
+    for (i, bit) in bits.iter().enumerate() {
+        if *bit {
+            packed[i / 8] |= 1 << (i % 8);
+        }
+    }
+    packed
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 1, 1))]
+struct ProgressiveContainerThreeFields {
+    a: u8,
+    b: u64,
+    c: Hash256,
+}
+
+#[test]
+fn progressive_container_multi_field() {
+    let container = ProgressiveContainerThreeFields {
+        a: 7,
+        b: 0x0102_0304_0506_0708,
+        c: Hash256::repeat_byte(0xcd),
+    };
+
+    let leaves = [
+        container.a.tree_hash_root(),
+        container.b.tree_hash_root(),
+        container.c.tree_hash_root(),
+    ];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true, true, true]),
+    );
+
+    assert_eq!(container.tree_hash_root(), expected);
+}
+
+#[derive(TreeHash)]
+#[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 0, 1))]
+struct ProgressiveContainerWithGap {
+    a: u8,
+    c: u16,
+}
+
+#[test]
+fn progressive_container_inactive_field() {
+    let container = ProgressiveContainerWithGap { a: 9, c: 0xbeef };
+
+    // The inactive middle position must contribute a zero leaf so chunk positions stay stable.
+    let leaves = [
+        container.a.tree_hash_root(),
+        Hash256::ZERO,
+        container.c.tree_hash_root(),
+    ];
+    let expected = mix_in_active_fields(
+        &progressive_merkle_root(&leaves),
+        packed_active_fields(&[true, false, true]),
+    );
+
+    assert_eq!(container.tree_hash_root(), expected);
+}
+
+#[derive(TreeHash)]
+#[tree_hash(enum_behaviour = "compatible_union")]
+enum CompatUnion {
+    #[tree_hash(selector = "1")]
+    A(u8),
+    #[tree_hash(selector = "4")]
+    B(HashVec),
+}
+
+#[test]
+fn compatible_union() {
+    // The root is `mix_in_selector(inner_root, selector)` using the explicit per-variant selectors.
+    assert_eq!(
+        CompatUnion::A(2).tree_hash_root(),
+        mix_in_selector(u8_hash(2), 1)
+    );
+    assert_eq!(
+        CompatUnion::B(HashVec::from(vec![2])).tree_hash_root(),
+        mix_in_selector(u8_hash_concat(2, 1), 4)
+    );
+}
+
+#[derive(Encode, TreeHash)]
+#[ssz(enum_behaviour = "compatible_union")]
+#[tree_hash(enum_behaviour = "compatible_union")]
+enum CompatUnionSszSelectors {
+    #[ssz(selector = "3")]
+    A(u8),
+    #[ssz(selector = "5")]
+    B(u8),
+}
+
+#[test]
+fn compatible_union_reads_ssz_selectors() {
+    // These variants carry no `tree_hash(selector)`, so `tree_hash` must read the selectors from
+    // the sibling `ssz` attribute (the `(None, Some(ssz))` fallback in `parse_variant_opts`).
+    assert_eq!(
+        CompatUnionSszSelectors::A(2).tree_hash_root(),
+        mix_in_selector(u8_hash(2), 3)
+    );
+    assert_eq!(
+        CompatUnionSszSelectors::B(2).tree_hash_root(),
+        mix_in_selector(u8_hash(2), 5)
+    );
+}
+
+#[derive(Encode, TreeHash)]
+#[ssz(enum_behaviour = "compatible_union")]
+#[tree_hash(enum_behaviour = "compatible_union")]
+enum CompatUnionBothSelectors {
+    #[ssz(selector = "3")]
+    #[tree_hash(selector = "3")]
+    A(u8),
+}
+
+#[test]
+fn compatible_union_consistent_selectors_in_both_attributes() {
+    // Setting the same selector in both the `ssz` and `tree_hash` attributes is permitted (the
+    // derive only rejects *inconsistent* selectors).
+    assert_eq!(
+        CompatUnionBothSelectors::A(2).tree_hash_root(),
+        mix_in_selector(u8_hash(2), 3)
+    );
+}
+
+/// Merkleize raw bytes (zero-padded into chunks) via the public progressive hasher.
+fn progressive_merkle_root_bytes(bytes: &[u8]) -> Hash256 {
+    let mut hasher = ProgressiveMerkleHasher::new();
+    hasher.write(bytes).unwrap();
+    hasher.finish().unwrap()
+}
+
+#[test]
+fn progressive_bitlist_empty() {
+    // An empty bitlist must hash as mix_in_length(merkleize_progressive([]) = ZERO, 0), exercising
+    // the empty-list workaround (an empty bitlist still stores a single zero byte internally).
+    let bitlist = ProgressiveBitList::with_capacity(0);
+    assert_eq!(
+        bitlist.tree_hash_root(),
+        tree_hash::mix_in_length(&Hash256::ZERO, 0)
+    );
+}
+
+#[test]
+fn progressive_bitlist_matches_packed_progressive() {
+    // The root must equal mix_in_length(merkleize_progressive(pack_bits(value)), len) for a range
+    // of lengths, including byte- and chunk-aligned cases and progressive level crossings.
+    for len in [1usize, 7, 8, 9, 16, 100, 256, 257, 1024] {
+        let mut bitlist = ProgressiveBitList::with_capacity(len);
+        for i in (0..len).step_by(3) {
+            bitlist.set(i, true).unwrap();
+        }
+
+        let expected =
+            tree_hash::mix_in_length(&progressive_merkle_root_bytes(bitlist.as_slice()), len);
+        assert_eq!(bitlist.tree_hash_root(), expected, "len = {len}");
+    }
+}
+
+#[test]
+fn progressive_bitlist_nonempty_all_false_differs_from_empty() {
+    // A non-empty all-false bitlist must NOT short-circuit to the empty value.
+    let bitlist = ProgressiveBitList::with_capacity(8);
+    let empty = ProgressiveBitList::with_capacity(0);
+
+    assert_ne!(bitlist.tree_hash_root(), empty.tree_hash_root());
+    assert_eq!(
+        bitlist.tree_hash_root(),
+        tree_hash::mix_in_length(&progressive_merkle_root_bytes(bitlist.as_slice()), 8)
+    );
 }

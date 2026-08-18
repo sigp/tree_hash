@@ -2,10 +2,14 @@ pub mod impls;
 mod merkle_hasher;
 mod merkleize_padded;
 mod merkleize_standard;
+mod progressive_merkle_hasher;
 
 pub use merkle_hasher::{Error, MerkleHasher};
 pub use merkleize_padded::merkleize_padded;
 pub use merkleize_standard::merkleize_standard;
+pub use progressive_merkle_hasher::{
+    Error as ProgressiveMerkleHasherError, ProgressiveMerkleHasher,
+};
 
 use ethereum_hashing::{hash_fixed, ZERO_HASHES, ZERO_HASHES_MAX_INDEX};
 use smallvec::SmallVec;
@@ -61,7 +65,10 @@ pub fn mix_in_length(root: &Hash256, length: usize) -> Hash256 {
     let mut length_bytes = [0; BYTES_PER_CHUNK];
     length_bytes[0..usize_len].copy_from_slice(&length.to_le_bytes());
 
-    Hash256::from_slice(&ethereum_hashing::hash32_concat(root.as_slice(), &length_bytes)[..])
+    Hash256::from(ethereum_hashing::hash32_concat(
+        root.as_slice(),
+        &length_bytes,
+    ))
 }
 
 /// Returns `Some(root)` created by hashing `root` and `selector`, if `selector <=
@@ -86,7 +93,17 @@ pub fn mix_in_selector(root: &Hash256, selector: u8) -> Option<Hash256> {
     chunk[0] = selector;
 
     let root = ethereum_hashing::hash32_concat(root.as_slice(), &chunk);
-    Some(Hash256::from_slice(&root))
+    Some(Hash256::from(root))
+}
+
+/// Returns the node created by hashing `root` and the packed `active_fields` bitvector chunk.
+///
+/// Used in `TreeHash` for the progressive container type.
+pub fn mix_in_active_fields(root: &Hash256, active_fields: [u8; BYTES_PER_CHUNK]) -> Hash256 {
+    Hash256::from(ethereum_hashing::hash32_concat(
+        root.as_slice(),
+        &active_fields,
+    ))
 }
 
 /// Returns a cached padding node for a given height.
@@ -200,6 +217,23 @@ mod test {
         assert_eq!(
             mix_in_length(&Hash256::from_slice(&[42; BYTES_PER_CHUNK]), 42).as_slice(),
             &hash[..]
+        );
+    }
+
+    #[test]
+    fn mix_active_fields() {
+        let root = Hash256::from_slice(&[42; BYTES_PER_CHUNK]);
+        // A multi-bit packed vector (bits 0 and 2 set) so an argument swap or wrong-bytes
+        // regression would be visible.
+        let mut active_fields = [0u8; BYTES_PER_CHUNK];
+        active_fields[0] = 0b0000_0101;
+
+        assert_eq!(
+            mix_in_active_fields(&root, active_fields),
+            Hash256::from(ethereum_hashing::hash32_concat(
+                root.as_slice(),
+                &active_fields
+            ))
         );
     }
 }
