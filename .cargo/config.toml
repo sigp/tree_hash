@@ -1,0 +1,4 @@
+[term]
+# Set `color` to `auto` in case the user has set it to `always`, which would
+# cause divergence in compiler output and break the trybuild tests.
+color = "auto"
