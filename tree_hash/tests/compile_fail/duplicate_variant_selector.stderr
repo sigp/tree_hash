@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/duplicate_variant_selector.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: failed to parse variant attribute for "A": Duplicate field `selector`; note that `selector` must be an integer in 1..=127
