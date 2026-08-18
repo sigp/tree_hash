@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/variant_named_fields.rs:5:10
+  |
+5 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: TreeHash can only be derived for enums where each variant has a single unnamed field (variant "A" does not)

@@ -1,0 +1,5 @@
+error: active_fields must be non-empty
+ --> tests/compile_fail/active_fields_empty.rs:5:57
+  |
+5 | #[tree_hash(struct_behaviour = "progressive_container", active_fields())]
+  |                                                         ^^^^^^^^^^^^^

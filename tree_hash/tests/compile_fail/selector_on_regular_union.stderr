@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/selector_on_regular_union.rs:5:10
+  |
+5 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: specifying the selector in a regular union is not supported

@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/compatible_union_missing_selector.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: you must define a selector for variant "B"

@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/enum_behaviour_on_struct.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: enum_behaviour is invalid for structs

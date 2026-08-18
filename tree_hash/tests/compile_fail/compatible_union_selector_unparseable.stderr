@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/compatible_union_selector_unparseable.rs:5:10
+  |
+5 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: failed to parse variant attribute for "A": Unknown value: `300` at selector; note that `selector` must be an integer in 1..=127

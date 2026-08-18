@@ -1,0 +1,9 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/active_fields_too_few_active.rs:5:10
+  |
+5 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: assertion `left == right` failed: active_fields has 1 active entries but the struct has 2 hashable fields (fields marked #[tree_hash(skip_hashing)] are not counted)
+            left: 1
+           right: 2

@@ -1,0 +1,5 @@
+error: Unknown value: `transprent`. Did you mean `transparent`?
+ --> tests/compile_fail/invalid_enum_behaviour.rs:5:30
+  |
+5 | #[tree_hash(enum_behaviour = "transprent")]
+  |                              ^^^^^^^^^^^^

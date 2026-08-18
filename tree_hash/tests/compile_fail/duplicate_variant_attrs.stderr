@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/duplicate_variant_attrs.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: more than one variant-level "tree_hash" attribute provided

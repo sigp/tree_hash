@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/compatible_union_selector_too_large.rs:4:10
+  |
+4 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: selector = 128 for variant "A" is illegal in a compatible union

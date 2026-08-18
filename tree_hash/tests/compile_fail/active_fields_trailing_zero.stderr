@@ -1,0 +1,5 @@
+error: the last entry of active_fields must not be 0 (the bitvector is delimited by the highest active field)
+ --> tests/compile_fail/active_fields_trailing_zero.rs:6:57
+  |
+6 | #[tree_hash(struct_behaviour = "progressive_container", active_fields(1, 0))]
+  |                                                         ^^^^^^^^^^^^^

@@ -1,0 +1,7 @@
+error: proc-macro derive panicked
+ --> tests/compile_fail/enum_no_behaviour.rs:5:10
+  |
+5 | #[derive(TreeHash)]
+  |          ^^^^^^^^
+  |
+  = help: message: enums require an "enum_behaviour" attribute with a value of "transparent", "union" or "compatible_union", e.g., #[tree_hash(enum_behaviour = "transparent")]
